@@ -1,0 +1,75 @@
+/* ==================================================================
+Deep Doc Search — тема «Ocean» (океан, приглушённый бирюзовый).
+Спокойная палитра морских оттенков с умеренной контрастностью.
+Акценты — приглушённый бирюзовый, без «кислотности».
+
+Механизм переключения тем:
+Активная тема подключается как отдельный файл через
+``<link id="theme-stylesheet">`` в ``base.html``. Смена темы
+выполняется через ``ThemeManager.applyTheme()``, который
+подменяет ``href`` у этого элемента. Атрибут ``data-theme``
+на ``<html>`` не используется. Единственный рабочий
+селектор — ``:root``.
+
+Скорректированный план (шаг 5.2 рефакторинга v5.0):
+
+Исправлена переменная ``--bg-badge-muted``: значение
+``#6E7A84 33`` (с пробелом) не является валидным CSS-цветом
+с альфа-каналом — токен ``33`` отделён от hex-значения пробелом
+и не распознаётся как суффикс прозрачности. Валидное значение —
+``#6E7A8433`` (RRGGBBAA, 8 hex-символов).
+================================================================== */
+:root {
+    /* ── Фоны ── */
+    --bg-activitybar: #1B2733;
+    --bg-sidebar: #18222C;
+    --bg-editor: #121A22;
+    --bg-tabbar: #18222C;
+    --bg-tab-active: #121A22;
+    --bg-tab-inactive: #1F2B37;
+    --bg-statusbar: #24394A;
+    --bg-input: #223040;
+    --bg-hover: #243240;
+    --bg-selected: #2F4D66;
+    --bg-button: #3E7A96;
+    --bg-button-hover: #4D8CA8;
+    --bg-button-danger: #A54A4A;
+    --bg-button-danger-hover: #BE5C5C;
+
+    /* ── Полупрозрачные фоны бейджей ── */
+    --bg-badge-success: #4A7A6A33;
+    --bg-badge-error: #B85C5C33;
+    --bg-badge-warning: #B89B4A33;
+    --bg-badge-info: #5AA0BE33;
+    --bg-badge-muted: #6E7A8433;
+
+    /* ── Цвета текста и элементов ── */
+    --fg-primary: #DCE6EE;
+    --fg-secondary: #A8B6C4;
+    --fg-muted: #78848E;
+    --fg-active: #FFFFFF;
+    --fg-link: #8FC4DC;
+    --fg-accent: #6BA8C4;
+    --fg-success: #7FB89E;
+    --fg-error: #D68A8A;
+    --fg-warning: #D4B86A;
+    --fg-info: #8FC4DC;
+    --fg-statusbar: #DCE6EE;
+    --fg-button: #FFFFFF;
+
+    /* ── Границы ── */
+    --border-color: #2E4050;
+    --border-focus: #6BA8C4;
+    --border-subtle: #222E3A;
+}
+
+.status-bar__dot--running {
+    background-color: #6BA8C4;
+    animation: pulse 1.5s infinite;
+}
+
+.filter-applied {
+    border-color: #8FC4DC !important;
+    box-shadow: 0 0 0 1px #8FC4DC;
+    color: #8FC4DC;
+}

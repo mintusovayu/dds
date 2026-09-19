@@ -1,0 +1,85 @@
+/* ==================================================================
+Deep Doc Search — тема «Coffee» (тёплая кофейная палитра).
+Приглушённые коричневые и кремовые оттенки с низкой контрастностью.
+Мягкий вариант для комфортной работы.
+
+Механизм переключения тем:
+Активная тема подключается как отдельный файл через
+``<link id="theme-stylesheet">`` в ``base.html``. Смена темы
+выполняется через ``ThemeManager.applyTheme()``, который
+подменяет ``href`` у этого элемента. Атрибут ``data-theme``
+на ``<html>`` не используется. Единственный рабочий
+селектор — ``:root``.
+
+Скорректированный план (шаг 5.1 рефакторинга v5.0):
+
+Файл переименован с ``theme-coffe.css`` на ``theme-coffee.css``
+(корректное написание английского слова «coffee»). Опечатка
+в имени файла приводила к отображению имени темы в UI как
+``Coffe`` вместо ``Coffee``. Миграция сохранённого в
+``localStorage`` значения ``dds-theme=coffe`` → ``coffee``
+выполняется в inline-скрипте ``base.html`` при загрузке
+страницы (см. ``getSavedTheme()``).
+
+Скорректированный план (шаг 5.2 рефакторинга v5.0):
+
+Исправлена переменная ``--bg-badge-muted``: значение
+``#7A6E60 33`` (с пробелом) не является валидным CSS-цветом
+с альфа-каналом — токен ``33`` отделён от hex-значения пробелом
+и не распознаётся как суффикс прозрачности. Валидное значение —
+``#7A6E6033`` (RRGGBBAA, 8 hex-символов).
+================================================================== */
+:root {
+    /* ── Фоны ── */
+    --bg-activitybar: #2A231E;
+    --bg-sidebar: #251F1A;
+    --bg-editor: #1C1714;
+    --bg-tabbar: #251F1A;
+    --bg-tab-active: #1C1714;
+    --bg-tab-inactive: #302822;
+    --bg-statusbar: #4A3A2E;
+    --bg-input: #302822;
+    --bg-hover: #322922;
+    --bg-selected: #4A3B2E;
+    --bg-button: #8B6F4E;
+    --bg-button-hover: #9D8160;
+    --bg-button-danger: #A54A4A;
+    --bg-button-danger-hover: #BE5C5C;
+
+    /* ── Полупрозрачные фоны бейджей ── */
+    --bg-badge-success: #7A8C5C33;
+    --bg-badge-error: #B85C5C33;
+    --bg-badge-warning: #C4A05033;
+    --bg-badge-info: #A8826033;
+    --bg-badge-muted: #7A6E6033;
+
+    /* ── Цвета текста и элементов ── */
+    --fg-primary: #EDE4D8;
+    --fg-secondary: #C0B29E;
+    --fg-muted: #8A7C6A;
+    --fg-active: #FFFFFF;
+    --fg-link: #C6A67E;
+    --fg-accent: #A88A66;
+    --fg-success: #9CB080;
+    --fg-error: #D68A8A;
+    --fg-warning: #D4B86A;
+    --fg-info: #C6A67E;
+    --fg-statusbar: #EDE4D8;
+    --fg-button: #FFFFFF;
+
+    /* ── Границы ── */
+    --border-color: #443528;
+    --border-focus: #A88A66;
+    --border-subtle: #2A221C;
+}
+
+.status-bar__dot--running {
+    background-color: #A88A66;
+    animation: pulse 1.5s infinite;
+}
+
+.filter-applied {
+    border-color: #C6A67E !important;
+    box-shadow: 0 0 0 1px #C6A67E;
+    color: #C6A67E;
+}

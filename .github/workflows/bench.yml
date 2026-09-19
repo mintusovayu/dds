@@ -1,0 +1,382 @@
+# =====================================================================
+# Deep Doc Search — CI-job быстрых бенчмарков.
+#
+# Назначение:
+#   Замер производительности на фиксированном self-hosted runner
+#   после изменений в ядре, веб-слое и тестах бенчмарков. Сравнение
+#   с baseline через Mann-Whitney U test; предупреждение при
+#   статистически значимой деградации медианы > 15%, блокировка
+#   при > 30%.
+#
+# Покрываемые операции (быстрые):
+#   - test_search_query             — FTS5-запрос по 50K страниц.
+#   - test_render_page_a4           — PNG A4 @ 300 DPI.
+#   - test_render_page_a1           — PNG A1 @ 300 DPI.
+#   - test_build_word_index_small   — WordIndex для страницы < 100 слов.
+#   - test_highlights_500_words     — /highlights на странице 500 слов.
+#   - test_fork_latency             — fork + IPC + Queue round-trip.
+#
+# Что НЕ покрывает этот job:
+#   - scan.full (1000 PDF) — вынесен в bench-slow.yml (3 прогона,
+#     отдельный бюджет времени).
+#
+# Модель сравнения:
+#   1. baseline.json в репозитории содержит raw_samples по каждой
+#      метрике (≥ 10 значений на метрику).
+#   2. Текущий прогон записывается pytest-benchmark в JSON, из
+#      которого извлекаются stats.data (все прогоны).
+#   3. Для каждой метрики — Mann-Whitney U test (scipy.stats) между
+#      baseline и текущим. p < 0.05 → различие значимо.
+#   4. Дельта медианы: OK ≤ 15% < WARNING ≤ 30% < FAIL.
+#   5. WARNING — не блокирует merge, публикует предупреждение.
+#      FAIL — блокирует job (exit 1).
+#
+# Почему self-hosted runner:
+#   Бенчмарки чувствительны к железу. Относительные baseline-значения
+#   сопоставимы только в пределах одного runner'а. Требуется метка
+#   dds-bench с фиксированной конфигурацией (8 CPU, 16 GB RAM,
+#   Ubuntu 22.04). См. tests/benchmarks/baseline.json → ci_runner.
+#
+# Триггеры:
+#   - pull_request → main: при изменении релевантных путей.
+#   - push → main: проверка на актуальной ветке.
+#   - workflow_dispatch: ручной запуск для диагностики.
+#
+# Concurrency:
+#   Отменяет предыдущие запуски на той же ветке/PR. Экономит время
+#   и избегает contention на одном runner'е.
+#
+# Совместимость:
+#   Требуется scipy (Mann-Whitney U) — есть в requirements-dev.txt.
+#   Требуется pytest-benchmark для JSON-вывода — есть в requirements-dev.txt.
+# =====================================================================
+
+name: Fast Benchmarks
+
+# =====================================================================
+# Триггеры запуска
+# =====================================================================
+on:
+  # При изменении ядра, веб-слоя, тестов бенчмарков или зависимостей.
+  # Изменения только в docs/, README, .md не триггерят — экономия.
+  pull_request:
+    branches: [main]
+    paths:
+      - 'dds_core/**'
+      - 'dds_web/**'
+      - 'tests/benchmarks/**'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
+      - '.github/workflows/bench.yml'
+
+  # Проверка после merge: baseline остаётся актуальным на main.
+  push:
+    branches: [main]
+
+  # Ручной запуск (например, при подозрении на регрессию).
+  workflow_dispatch:
+
+# =====================================================================
+# Concurrency: отмена предыдущих запусков на той же ветке/PR.
+# Предотвращает параллельный запуск двух бенчмарков на одном
+# self-hosted runner'е (это искажает результаты).
+# =====================================================================
+concurrency:
+  group: bench-fast-${{ github.ref }}
+  cancel-in-progress: true
+
+# =====================================================================
+# Permissions: минимально необходимые.
+# contents: read — для checkout. artifacts: не требуются отдельно
+# (upload-artifact работает без явных permissions).
+# =====================================================================
+permissions:
+  contents: read
+
+# =====================================================================
+# Переменные окружения, общие для всех шагов.
+# =====================================================================
+env:
+  # Python-версия соответствует docs/deployment.md (минимум 3.12).
+  PYTHON_VERSION: '3.12'
+
+  # Отключает периодическую проверку новых версий pip в stdout.
+  PIP_DISABLE_PIP_VERSION_CHECK: '1'
+
+  # Отключает создание .pyc-файлов: кэш байткода снижает
+  # воспроизводимость замеров (первый прогон холодный, последующие
+  # тёплые). Для бенчмарков важно единообразие.
+  PYTHONDONTWRITEBYTECODE: '1'
+
+jobs:
+  # -------------------------------------------------------------------
+  # Job: bench-fast
+  #
+  # Единственный job в workflow. Все шаги линейны.
+  # -------------------------------------------------------------------
+  bench-fast:
+    name: Fast benchmarks
+
+    # Self-hosted runner с фиксированной конфигурацией.
+    # Метки соответствуют tests/benchmarks/baseline.json → ci_runner.
+    runs-on: [self-hosted, linux, x64, dds-bench]
+
+    # Верхняя граница: 6 метрик × 10 прогонов × ~1 сек + setup.
+    # Реалистично 3–5 минут; 25 минут — страховка от зависания.
+    timeout-minutes: 25
+
+    steps:
+      # ---------------------------------------------------------------
+      # 1. Checkout
+      # ---------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Полная история не нужна — только текущий коммит.
+          fetch-depth: 1
+
+      # ---------------------------------------------------------------
+      # 2. Setup Python + кэш pip
+      #
+      # Кэш по requirements-dev.txt: при изменении файла кэш
+      # инвалидируется автоматически (хеш содержимого).
+      # ---------------------------------------------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      # ---------------------------------------------------------------
+      # 3. Установка зависимостей
+      #
+      # Полная установка (runtime + dev): включает pytest-benchmark,
+      # scipy, import-linter и др. Установка идемпотентна.
+      # ---------------------------------------------------------------
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      # ---------------------------------------------------------------
+      # 4. Прогон быстрых бенчмарков
+      #
+      # pytest-benchmark:
+      #   --benchmark-json=<file>      — сериализация результатов.
+      #   --benchmark-min-rounds=10    — ≥ 10 прогонов на метрику.
+      #   --benchmark-max-time=5       — авто-масштабирование rounds
+      #                                  до 5 секунд на метрику
+      #                                  (компромисс стабильности и
+      #                                  времени CI).
+      #   --benchmark-warmup=on        — прогрев перед замерами.
+      #   --benchmark-disable-gc       — отключить GC во время замера
+      #                                  для снижения дисперсии.
+      #                                  (GC включается между замерами).
+      #
+      # Формат JSON: {"benchmarks": [{"name": "...", "stats": {"data": [...]}}]}.
+      # stats.data содержит все прогоны — используется для U-test.
+      # ---------------------------------------------------------------
+      - name: Run fast benchmarks
+        id: run_bench
+        run: |
+          pytest tests/benchmarks/bench_fast.py \
+            --benchmark-json=benchmark_results.json \
+            --benchmark-min-rounds=10 \
+            --benchmark-max-time=5 \
+            --benchmark-warmup=on \
+            --benchmark-disable-gc \
+            --benchmark-sort=name \
+            -v
+
+      # ---------------------------------------------------------------
+      # 5. Сравнение с baseline
+      #
+      # Для каждой метрики:
+      #   - Извлечь raw samples из baseline.json и текущего прогона.
+      #   - Mann-Whitney U test (two-sided, p < 0.05) — есть ли
+      #     статистически значимое различие распределений.
+      #   - Дельта медиан: (median_curr / median_base - 1) * 100%.
+      #   - Классификация: OK / WARNING / FAIL.
+      #
+      # Baseline хранится в репозитории как tests/benchmarks/baseline.json.
+      # Структура: {"raw_samples": {metric: [values...]}, ...}.
+      #
+      # Отчёт публикуется в $GITHUB_STEP_SUMMARY (markdown) и
+      # сохраняется как bench_summary.md для artifact.
+      #
+      # Fail-условие: exit 1 при наличии FAIL-метрик (дельта > 30%
+      # при p < 0.05). WARNING не блокирует.
+      # ---------------------------------------------------------------
+      - name: Compare with baseline
+        id: compare
+        run: |
+          python - <<'PYTHON'
+          import json
+          import statistics
+          import sys
+          from pathlib import Path
+
+          from scipy.stats import mannwhitneyu
+
+          BASELINE_PATH = Path("tests/benchmarks/baseline.json")
+          CURRENT_PATH = Path("benchmark_results.json")
+          SUMMARY_PATH = Path("bench_summary.md")
+
+          # Пороги деградации медианы (в процентах).
+          WARN_THRESHOLD_PCT = 15.0
+          FAIL_THRESHOLD_PCT = 30.0
+
+          # Уровень значимости Mann-Whitney U test.
+          P_VALUE_THRESHOLD = 0.05
+
+          baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+          current = json.loads(CURRENT_PATH.read_text(encoding="utf-8"))
+
+          baseline_samples = baseline["raw_samples"]
+
+          # Собрать текущие samples из pytest-benchmark JSON.
+          current_samples = {}
+          for bench in current.get("benchmarks", []):
+              name = bench["name"]
+              data = bench.get("stats", {}).get("data", [])
+              if not data:
+                  continue
+              current_samples[name] = [float(x) for x in data]
+
+          # Классификация и сводка.
+          results = []
+          has_fail = False
+          has_warn = False
+
+          for metric, base_values in baseline_samples.items():
+              if metric not in current_samples:
+                  results.append({
+                      "metric": metric,
+                      "status": "MISSING",
+                      "detail": "current samples not found",
+                  })
+                  continue
+
+              curr_values = current_samples[metric]
+
+              # Mann-Whitney U (two-sided).
+              try:
+                  _, p_value = mannwhitneyu(
+                      base_values, curr_values, alternative="two-sided"
+                  )
+              except ValueError:
+                  # Случай: все значения одинаковые — распределение
+                  # вырожденное, U-test неопределён.
+                  p_value = 1.0
+
+              median_base = statistics.median(base_values)
+              median_curr = statistics.median(curr_values)
+              delta_pct = (
+                  (median_curr / median_base - 1.0) * 100.0
+                  if median_base > 0
+                  else 0.0
+              )
+
+              # Классификация: WARNING/FAIL только при статистически
+              # значимой деградации (p < 0.05). Иначе — OK.
+              if p_value < P_VALUE_THRESHOLD and delta_pct > FAIL_THRESHOLD_PCT:
+                  status = "FAIL"
+                  has_fail = True
+              elif p_value < P_VALUE_THRESHOLD and delta_pct > WARN_THRESHOLD_PCT:
+                  status = "WARNING"
+                  has_warn = True
+              else:
+                  status = "OK"
+
+              results.append({
+                  "metric": metric,
+                  "status": status,
+                  "median_base": median_base,
+                  "median_curr": median_curr,
+                  "delta_pct": delta_pct,
+                  "p_value": p_value,
+                  "n_base": len(base_values),
+                  "n_curr": len(curr_values),
+              })
+
+          # Markdown-отчёт.
+          lines = ["# Fast Benchmarks Summary", ""]
+          lines.append(f"Baseline runner: `{baseline.get('ci_runner', 'unknown')}`")
+          lines.append(f"Baseline generated: `{baseline.get('generated_at', 'unknown')}`")
+          lines.append("")
+          lines.append("| Metric | Status | Median (base) | Median (curr) | Δ% | p-value |")
+          lines.append("|---|---|---|---|---|---|")
+
+          for r in results:
+              if r["status"] == "MISSING":
+                  lines.append(
+                      f"| {r['metric']} | MISSING | — | — | — | — |"
+                  )
+                  continue
+              lines.append(
+                  "| {metric} | {status} | {mb:.3f} | {mc:.3f} | "
+                  "{d:+.2f}% | {p:.4f} |".format(
+                      metric=r["metric"],
+                      status=r["status"],
+                      mb=r["median_base"],
+                      mc=r["median_curr"],
+                      d=r["delta_pct"],
+                      p=r["p_value"],
+                  )
+              )
+
+          lines.append("")
+          if has_fail:
+              lines.append(
+                  f"**FAIL**: at least one metric degraded by > "
+                  f"{FAIL_THRESHOLD_PCT:.0f}% (p < {P_VALUE_THRESHOLD})."
+              )
+          elif has_warn:
+              lines.append(
+                  f"**WARNING**: at least one metric degraded by > "
+                  f"{WARN_THRESHOLD_PCT:.0f}% (p < {P_VALUE_THRESHOLD}). "
+                  f"Merge is not blocked."
+              )
+          else:
+              lines.append("**OK**: no significant degradation detected.")
+
+          summary = "\n".join(lines) + "\n"
+          SUMMARY_PATH.write_text(summary, encoding="utf-8")
+
+          # Публикация в GitHub Step Summary.
+          github_summary = Path(
+              __import__("os").environ.get("GITHUB_STEP_SUMMARY", "/dev/null")
+          )
+          try:
+              with github_summary.open("a", encoding="utf-8") as fh:
+                  fh.write(summary)
+          except OSError:
+              # Локальный запуск без GITHUB_STEP_SUMMARY — не критично.
+              pass
+
+          # Отладка: печать в stdout (видно в логах job).
+          print(summary)
+
+          if has_fail:
+              sys.exit(1)
+          PYTHON
+        shell: bash
+
+      # ---------------------------------------------------------------
+      # 6. Артефакты (всегда, даже при падении шага сравнения)
+      #
+      # benchmark_results.json — сырые результаты pytest-benchmark
+      # (для отладки и offline-анализа).
+      # bench_summary.md — markdown-отчёт для чтения.
+      # ---------------------------------------------------------------
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-${{ github.sha }}
+          path: |
+            benchmark_results.json
+            bench_summary.md
+          retention-days: 14
+          if-no-files-found: warn

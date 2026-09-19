@@ -1,0 +1,108 @@
+# =====================================================================
+# Конфигурация инструментов DDS.
+#
+# Единая точка настройки: pytest, ruff, mypy, Pylance (pyright).
+# Пути в конфигурациях — относительно корня проекта (repository root).
+# =====================================================================
+
+[build-system]
+# Проект не является installable-пакетом (не публикуется в PyPI).
+# Секция нужна только для корректной работы инструментов,
+# читающих pyproject.toml.
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dds"
+version = "1.0.0"
+description = "Deep Doc Search — система поиска и анализа рабочей документации"
+requires-python = ">=3.12"
+readme = "README.md"
+
+
+# ---------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------
+[tool.pytest.ini_options]
+# Регистрация кастомных маркеров. Без неё pytest с --strict-markers
+# (используется в smoke.yml) упадёт при встрече неизвестного маркера.
+markers = [
+    "slow: длительные тесты (fork-safety, spawn, scan.full)",
+    "smoke: smoke-тесты Playwright (требуют запуска приложения)",
+    "benchmark: бенчмарки производительности (требуют baseline)",
+]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+
+# ---------------------------------------------------------------------
+# ruff
+# ---------------------------------------------------------------------
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["dds_core", "dds_web", "tools", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",   # pycodestyle + pyflakes
+    "I",             # isort
+    "N",             # pep8-naming
+    "UP",            # pyupgrade
+    "B",             # flake8-bugbear
+    "C4",            # flake8-comprehensions
+    "SIM",           # flake8-simplify
+    "ARG",           # flake8-unused-arguments
+    "PTH",           # flake8-use-pathlib
+    "RUF",           # ruff-specific
+]
+ignore = [
+    "E501",          # line length — контролируется formatter'ом
+    "B008",          # Function call in default arg (FastAPI Depends)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ARG001", "ARG002", "S101"]  # pytest fixtures, assert
+"tools/**/*.py" = ["T201"]                       # print в CLI-утилитах
+
+
+# ---------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = false      # постепенно ужесточается в ходе рефакторинга
+disallow_untyped_defs = false   # то же
+ignore_missing_imports = true
+follow_imports = "silent"
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+# PyMuPDF не публикует type stubs.
+module = "fitz.*"
+ignore_missing_imports = true
+
+
+# ---------------------------------------------------------------------
+# Pylance / Pyright (VS Code)
+# ---------------------------------------------------------------------
+[tool.pyright]
+include = ["dds_core", "dds_web", "tools", "tests"]
+exclude = [
+    "**/__pycache__",
+    "**/.pytest_cache",
+    "**/.mypy_cache",
+    "**/.ruff_cache",
+    "**/node_modules",
+    "**/.venv",
+]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+# PyYAML не публикует stub-файлы. Инструменты в tools/
+# используют try/except ImportError для понятной диагностики
+# до установки зависимостей.
+reportMissingModuleSource = "none"

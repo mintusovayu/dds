@@ -1,0 +1,24 @@
+{
+    "folders": [
+        {
+            "name": "DDS",
+            "path": "."
+        }
+    ],
+    "settings": {
+        // Настройки на уровне workspace наследуют .vscode/settings.json.
+        // Здесь — только то, что специфично для workspace-сессии.
+        "window.title": "DDS — ${activeEditorShort}",
+        "workbench.colorCustomizations": {
+            "titleBar.activeBackground": "#1B2733",
+            "titleBar.activeForeground": "#DCE6EE"
+        }
+    },
+    "extensions": {
+        "recommendations": [
+            "ms-python.python",
+            "ms-python.vscode-pylance",
+            "charliermarsh.ruff"
+        ]
+    }
+}

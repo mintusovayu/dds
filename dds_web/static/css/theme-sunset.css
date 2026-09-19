@@ -1,0 +1,67 @@
+/* ==================================================================
+Deep Doc Search — тема «Sunset» (закат, тёплые янтарные оттенки).
+Спокойная тёплая палитра, снижающая нагрузку на глаза в тёмное
+время суток. Акценты — янтарные и терракотовые.
+
+Механизм переключения тем:
+Активная тема подключается как отдельный файл через
+``<link id="theme-stylesheet">`` в ``base.html``. Смена темы
+выполняется через ``ThemeManager.applyTheme()``, который
+подменяет ``href`` у этого элемента. Атрибут ``data-theme``
+на ``<html>`` не используется. Единственный рабочий
+селектор — ``:root``.
+================================================================== */
+:root {
+    /* ── Фоны ── */
+    --bg-activitybar: #2E241C;
+    --bg-sidebar: #28201A;
+    --bg-editor: #1E1814;
+    --bg-tabbar: #28201A;
+    --bg-tab-active: #1E1814;
+    --bg-tab-inactive: #332A21;
+    --bg-statusbar: #4A3628;
+    --bg-input: #332A22;
+    --bg-hover: #352B22;
+    --bg-selected: #4E3E2C;
+    --bg-button: #96693E;
+    --bg-button-hover: #A87B4A;
+    --bg-button-danger: #A54A4A;
+    --bg-button-danger-hover: #BE5C5C;
+
+    /* ── Полупрозрачные фоны бейджей ── */
+    --bg-badge-success: #4A7A5C33;
+    --bg-badge-error: #B85C5C33;
+    --bg-badge-warning: #C4A05033;
+    --bg-badge-info: #B88F6033;
+    --bg-badge-muted: #7A6E60 33;
+
+    /* ── Цвета текста и элементов ── */
+    --fg-primary: #F0E6D8;
+    --fg-secondary: #C4B6A0;
+    --fg-muted: #8E8270;
+    --fg-active: #FFFFFF;
+    --fg-link: #DCA87A;
+    --fg-accent: #C89060;
+    --fg-success: #7FB89E;
+    --fg-error: #D68A8A;
+    --fg-warning: #D4B86A;
+    --fg-info: #DCA87A;
+    --fg-statusbar: #F0E6D8;
+    --fg-button: #FFFFFF;
+
+    /* ── Границы ── */
+    --border-color: #463628;
+    --border-focus: #C89060;
+    --border-subtle: #2E241C;
+}
+
+.status-bar__dot--running {
+    background-color: #C89060;
+    animation: pulse 1.5s infinite;
+}
+
+.filter-applied {
+    border-color: #DCA87A !important;
+    box-shadow: 0 0 0 1px #DCA87A;
+    color: #DCA87A;
+}

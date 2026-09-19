@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
+*.prof
+*.xlsx
+*.csv
+
+# Rust
+target/
+
+# debug
+debug_output/
+
+# Local environment
+.env
+.env.*
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Private input data
+data/input/private/*
+!data/input/private/.gitkeep
+config.json
+
+# Private markup
+data/markup/private/*
+!data/markup/private/.gitkeep
+
+# Private expected results
+data/expected/private/*
+!data/expected/private/.gitkeep
+
+# Output artifacts
+data/output/reports/*
+!data/output/reports/.gitkeep
+
+data/output/perf/*
+!data/output/perf/.gitkeep
+
+data/output/debug/*
+!data/output/debug/.gitkeep
+
+# Local performance baselines
+tests/performance/baselines/*.local.json
+
+# IDE and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+#pdf
+*.pdf

@@ -1,0 +1,5988 @@
+{
+  "objects": {
+    "codes": [
+      "1000",
+      "1100",
+      "1110",
+      "1111",
+      "1112",
+      "1120",
+      "1121",
+      "1122",
+      "1130",
+      "1140",
+      "1150",
+      "1160",
+      "1161",
+      "1170",
+      "1200",
+      "1210",
+      "1220",
+      "1230",
+      "1240",
+      "1250",
+      "1260",
+      "1270",
+      "1280",
+      "1290",
+      "1300",
+      "1310",
+      "1320",
+      "1330",
+      "1340",
+      "1350",
+      "1360",
+      "1400",
+      "1410",
+      "1411",
+      "1412",
+      "1414",
+      "1415",
+      "1416",
+      "1417",
+      "1418",
+      "1419",
+      "1420",
+      "1421",
+      "1422",
+      "1430",
+      "1431",
+      "1432",
+      "1450",
+      "1470",
+      "1490",
+      "1500",
+      "1510",
+      "1520",
+      "1530",
+      "1540",
+      "1550",
+      "1560",
+      "1570",
+      "1580",
+      "1600",
+      "1610",
+      "1620",
+      "1630",
+      "1640",
+      "1650",
+      "1700",
+      "1710",
+      "1720",
+      "1800",
+      "2000",
+      "2100",
+      "2110",
+      "2111",
+      "2112",
+      "2113",
+      "2114",
+      "2115",
+      "2116",
+      "2118",
+      "2119",
+      "2130",
+      "2131",
+      "2132",
+      "2140",
+      "2141",
+      "2142",
+      "2143",
+      "2144",
+      "2145",
+      "2146",
+      "2148",
+      "2149",
+      "2150",
+      "2200",
+      "2210",
+      "2211",
+      "2212",
+      "2213",
+      "2214",
+      "2215",
+      "2216",
+      "2217",
+      "2218",
+      "2219",
+      "2220",
+      "2221",
+      "2222",
+      "2223",
+      "2224",
+      "2300",
+      "2310",
+      "2320",
+      "2330",
+      "2400",
+      "2410",
+      "2420",
+      "2500",
+      "2510",
+      "2511",
+      "2512",
+      "2513",
+      "2514",
+      "2515",
+      "2516",
+      "2517",
+      "2518",
+      "2520",
+      "2560",
+      "2570",
+      "2571",
+      "2572",
+      "2580",
+      "2581",
+      "2582",
+      "2583",
+      "2590",
+      "2591",
+      "2600",
+      "2610",
+      "2611",
+      "2612",
+      "2613",
+      "2620",
+      "2630",
+      "2640",
+      "2650",
+      "2660",
+      "2700",
+      "2710",
+      "2720",
+      "2730",
+      "2731",
+      "2732",
+      "2733",
+      "2734",
+      "2735",
+      "2736",
+      "2738",
+      "2739",
+      "2740",
+      "2750",
+      "2760",
+      "2770",
+      "2780",
+      "2790",
+      "2800",
+      "2820",
+      "2830",
+      "2840",
+      "2850",
+      "2860",
+      "2870",
+      "2880",
+      "2890",
+      "2895",
+      "3000",
+      "3100",
+      "3110",
+      "3111",
+      "3112",
+      "3115",
+      "3120",
+      "3121",
+      "3125",
+      "3130",
+      "3131",
+      "3135",
+      "3140",
+      "3141",
+      "3145",
+      "3200",
+      "3210",
+      "3211",
+      "3212",
+      "3215",
+      "3216",
+      "3220",
+      "3221",
+      "3222",
+      "3225",
+      "3226",
+      "3230",
+      "3231",
+      "3232",
+      "3235",
+      "3236",
+      "3240",
+      "3241",
+      "3245",
+      "3300",
+      "3310",
+      "3311",
+      "3315",
+      "3320",
+      "3321",
+      "3325",
+      "3330",
+      "3331",
+      "3335",
+      "3350",
+      "3351",
+      "3355",
+      "3360",
+      "3361",
+      "3365",
+      "3400",
+      "3410",
+      "3411",
+      "3415",
+      "3420",
+      "3421",
+      "3425",
+      "3430",
+      "3431",
+      "3435",
+      "3440",
+      "3441",
+      "3445",
+      "3500",
+      "3510",
+      "3515",
+      "3520",
+      "3540",
+      "3560",
+      "3570",
+      "3580",
+      "3600",
+      "3610",
+      "3611",
+      "3615",
+      "3630",
+      "3700",
+      "3710",
+      "3711",
+      "3715",
+      "3720",
+      "3721",
+      "3725",
+      "3730",
+      "3731",
+      "3735",
+      "3740",
+      "3741",
+      "3745",
+      "3750",
+      "3751",
+      "3755",
+      "3760",
+      "3761",
+      "3765",
+      "3770",
+      "3771",
+      "3775",
+      "3800",
+      "3810",
+      "3811",
+      "3815",
+      "3820",
+      "3821",
+      "3825",
+      "3830",
+      "3831",
+      "3835",
+      "3840",
+      "3841",
+      "3845",
+      "3850",
+      "3851",
+      "3855",
+      "3900",
+      "3910",
+      "3911",
+      "3912",
+      "3913",
+      "3915",
+      "3916",
+      "3917",
+      "3920",
+      "3921",
+      "3925",
+      "3930",
+      "3931",
+      "3935",
+      "3940",
+      "3950",
+      "3960",
+      "5000",
+      "5100",
+      "5110",
+      "5120",
+      "5130",
+      "5140",
+      "5200",
+      "5210",
+      "5220",
+      "5230",
+      "5240",
+      "5300",
+      "5310",
+      "5320",
+      "5330",
+      "5400",
+      "5410",
+      "5420",
+      "5430",
+      "5440",
+      "5500",
+      "5510",
+      "5520",
+      "5530",
+      "5540",
+      "5550",
+      "5551",
+      "5552",
+      "5553",
+      "5560",
+      "5561",
+      "5562",
+      "5563",
+      "5570",
+      "5571",
+      "5572",
+      "5573",
+      "5580",
+      "5581",
+      "5582",
+      "5600",
+      "6000",
+      "6100",
+      "6110",
+      "6120",
+      "6130",
+      "6140",
+      "6200",
+      "6400",
+      "6500",
+      "6600",
+      "6700",
+      "6710",
+      "6720",
+      "6730",
+      "6740",
+      "6750",
+      "6800",
+      "6810",
+      "6820",
+      "6821",
+      "6822",
+      "6823",
+      "6824",
+      "6825",
+      "6826",
+      "6827",
+      "6828",
+      "6830",
+      "6850",
+      "6851",
+      "6852",
+      "6853",
+      "6854",
+      "6900",
+      "6910",
+      "6920",
+      "6930",
+      "6940",
+      "7000",
+      "7100",
+      "7110",
+      "7200",
+      "7210",
+      "7250",
+      "7290",
+      "7300",
+      "7310",
+      "7320",
+      "7321",
+      "7325",
+      "7330",
+      "7340",
+      "7350",
+      "7360",
+      "7400",
+      "7410",
+      "7420",
+      "7430",
+      "7431",
+      "7432",
+      "7433",
+      "7600",
+      "7610",
+      "7611",
+      "7612",
+      "7613",
+      "7620",
+      "7700",
+      "7710",
+      "7800",
+      "7810",
+      "7811",
+      "7820",
+      "7821",
+      "7822",
+      "7823",
+      "7824",
+      "7825",
+      "7826",
+      "7827",
+      "7828",
+      "7829",
+      "7830",
+      "7831",
+      "7832",
+      "7833",
+      "7834",
+      "7835",
+      "7836",
+      "7837",
+      "7838",
+      "7839",
+      "7840",
+      "7841",
+      "7850",
+      "7851",
+      "7860",
+      "7861",
+      "7870",
+      "7880",
+      "8000",
+      "8100",
+      "8110",
+      "8140",
+      "8150",
+      "8151",
+      "8152",
+      "8160",
+      "8161",
+      "8162",
+      "8200",
+      "8210",
+      "8211",
+      "8212",
+      "8213",
+      "8214",
+      "8218",
+      "8220",
+      "8221",
+      "8222",
+      "8223",
+      "8224",
+      "8230",
+      "8231",
+      "8232",
+      "8233",
+      "8234",
+      "8235",
+      "8236",
+      "8237",
+      "8238",
+      "8239",
+      "8240",
+      "8250",
+      "8260",
+      "8270",
+      "8280",
+      "8290",
+      "8300",
+      "8310",
+      "8320",
+      "8330",
+      "8340",
+      "8341",
+      "8342",
+      "8343",
+      "8344",
+      "8350",
+      "8360",
+      "8370",
+      "8371",
+      "8372",
+      "8380",
+      "8400",
+      "8410",
+      "8420",
+      "8430",
+      "8440",
+      "8450",
+      "8460",
+      "8470",
+      "8500",
+      "8510",
+      "8520",
+      "8530",
+      "8540",
+      "8550",
+      "8600",
+      "8610",
+      "8620",
+      "8630",
+      "8640",
+      "8650",
+      "8660",
+      "8661",
+      "8662",
+      "8663",
+      "8670",
+      "8680",
+      "8700",
+      "8710",
+      "8711",
+      "8712",
+      "8713",
+      "8720",
+      "8730",
+      "8740",
+      "8750",
+      "8760",
+      "8770",
+      "8800",
+      "8810",
+      "8820",
+      "8830",
+      "8831",
+      "8832",
+      "8833",
+      "8900",
+      "8910",
+      "9000",
+      "9100",
+      "9110",
+      "9120",
+      "9200",
+      "9400",
+      "9500",
+      "9600",
+      "9700",
+      "9710",
+      "9720",
+      "9730",
+      "9740",
+      "9750",
+      "9800",
+      "9810",
+      "9811",
+      "9812",
+      "9820",
+      "9821",
+      "9822",
+      "9823",
+      "9824",
+      "9825",
+      "9826",
+      "9827",
+      "9828",
+      "9830",
+      "9850",
+      "9851",
+      "9852",
+      "9853",
+      "9854",
+      "9900",
+      "9910",
+      "9920",
+      "9930",
+      "9940"
+    ],
+    "aliases_en": [
+      {
+        "alias": "2 Way Radio Systems",
+        "code": "1290"
+      },
+      {
+        "alias": "2nd Cleaner",
+        "code": "3360"
+      },
+      {
+        "alias": "2nd Cleaner - Line 1",
+        "code": "3361"
+      },
+      {
+        "alias": "2nd Cleaner - Line 2",
+        "code": "3365"
+      },
+      {
+        "alias": "35kV Site Overhead Power Distribution - Cable Racks",
+        "code": "2320"
+      },
+      {
+        "alias": "35kV Site Overhead Power Distribution - Stage-1",
+        "code": "2320"
+      },
+      {
+        "alias": "35kV Site Overhead Power Distribution - Stage-2",
+        "code": "2320"
+      },
+      {
+        "alias": "35kV Site Overhead Power Distribution - Stage-3",
+        "code": "2320"
+      },
+      {
+        "alias": "3rd party services",
+        "code": "8162"
+      },
+      {
+        "alias": "Access Road",
+        "code": "7100"
+      },
+      {
+        "alias": "Access Security",
+        "code": "2880"
+      },
+      {
+        "alias": "Accommodations",
+        "code": "2611"
+      },
+      {
+        "alias": "Air",
+        "code": "1540"
+      },
+      {
+        "alias": "All-Weather Road - Bilibino to Nagleynyn",
+        "code": "7620"
+      },
+      {
+        "alias": "All-Weather Road - Peschanka to Bilibino",
+        "code": "7610"
+      },
+      {
+        "alias": "All-weather road",
+        "code": "7600"
+      },
+      {
+        "alias": "Alluvial Gold Deposit",
+        "code": "1700"
+      },
+      {
+        "alias": "Ancillaries",
+        "code": "2583"
+      },
+      {
+        "alias": "Ancillary Facilities 1",
+        "code": "2149"
+      },
+      {
+        "alias": "Ancillary Facilities 2",
+        "code": "2119"
+      },
+      {
+        "alias": "Area Lighting",
+        "code": "2750"
+      },
+      {
+        "alias": "Assaying",
+        "code": "8730"
+      },
+      {
+        "alias": "Auxilary",
+        "code": "1630"
+      },
+      {
+        "alias": "Bagging Plant",
+        "code": "3440"
+      },
+      {
+        "alias": "Bagging Plant - Line 1",
+        "code": "3441"
+      },
+      {
+        "alias": "Bagging Plant - Line 2",
+        "code": "3445"
+      },
+      {
+        "alias": "Baimka Talik Water Supply",
+        "code": "7430"
+      },
+      {
+        "alias": "Baimsky GOK Substation",
+        "code": "7310"
+      },
+      {
+        "alias": "Baimsky GOK Substation Electrical Rooms",
+        "code": "2310"
+      },
+      {
+        "alias": "Ball Charging System - Line 1",
+        "code": "3222"
+      },
+      {
+        "alias": "Ball Charging System - Line 2",
+        "code": "3226"
+      },
+      {
+        "alias": "Ball Milling",
+        "code": "3220"
+      },
+      {
+        "alias": "Ball Milling - Line 1",
+        "code": "3221"
+      },
+      {
+        "alias": "Ball Milling - Line 2",
+        "code": "3225"
+      },
+      {
+        "alias": "Bankable Feasibility Study",
+        "code": "8160"
+      },
+      {
+        "alias": "Banking Fees 1",
+        "code": "6730"
+      },
+      {
+        "alias": "Banking Fees 2",
+        "code": "9730"
+      },
+      {
+        "alias": "Bolshoy Anyui Bridge",
+        "code": "7613"
+      },
+      {
+        "alias": "Bolshoy Anyuy talik (Future)",
+        "code": "7420"
+      },
+      {
+        "alias": "Bulk Concentrate Regrind",
+        "code": "3330"
+      },
+      {
+        "alias": "Bulk Concentrate Regrind - Line 1",
+        "code": "3331"
+      },
+      {
+        "alias": "Bulk Concentrate Regrind - Line 2",
+        "code": "3335"
+      },
+      {
+        "alias": "Bulk Concentrate Thickening",
+        "code": "3410"
+      },
+      {
+        "alias": "Bulk Concentrate Thickening - Line 1",
+        "code": "3411"
+      },
+      {
+        "alias": "Bulk Concentrate Thickening - Line 2",
+        "code": "3415"
+      },
+      {
+        "alias": "Bulk Flotation Reagents",
+        "code": "3810"
+      },
+      {
+        "alias": "Bulk Flotation Reagents-Line 1",
+        "code": "3811"
+      },
+      {
+        "alias": "Bulk Flotation Reagents-Line 2",
+        "code": "3815"
+      },
+      {
+        "alias": "Bulk Rougher Flotation",
+        "code": "3310"
+      },
+      {
+        "alias": "Bulk Rougher Flotation - Line 1",
+        "code": "3311"
+      },
+      {
+        "alias": "Bulk Rougher Flotation - Line 2",
+        "code": "3315"
+      },
+      {
+        "alias": "Buses",
+        "code": "1350"
+      },
+      {
+        "alias": "Camp Buildings and Facilities",
+        "code": "2610"
+      },
+      {
+        "alias": "Camp Heating Plant",
+        "code": "2620"
+      },
+      {
+        "alias": "Camp Management and Catering",
+        "code": "8320"
+      },
+      {
+        "alias": "Camp Power and Distribution",
+        "code": "2630"
+      },
+      {
+        "alias": "Camp Sewage Treatment",
+        "code": "2660"
+      },
+      {
+        "alias": "Camp Waste",
+        "code": "2650"
+      },
+      {
+        "alias": "Camp Water Treatment",
+        "code": "2640"
+      },
+      {
+        "alias": "Capital and Insurance Spares",
+        "code": "8540"
+      },
+      {
+        "alias": "Capitalized Depreciation and Amotization 1",
+        "code": "6710"
+      },
+      {
+        "alias": "Capitalized Depreciation and Amotization 2",
+        "code": "9710"
+      },
+      {
+        "alias": "Central Heating Plant",
+        "code": "2770"
+      },
+      {
+        "alias": "Change House 1",
+        "code": "2516"
+      },
+      {
+        "alias": "Change House 2",
+        "code": "2732"
+      },
+      {
+        "alias": "Change House 3",
+        "code": "1417"
+      },
+      {
+        "alias": "Checkpoint",
+        "code": "7823"
+      },
+      {
+        "alias": "Cleaner/Scavenger Flotation",
+        "code": "3350"
+      },
+      {
+        "alias": "Cleaner/Scavenger Flotation - Line 1",
+        "code": "3351"
+      },
+      {
+        "alias": "Cleaner/Scavenger Flotation - Line 2",
+        "code": "3355"
+      },
+      {
+        "alias": "Coarse Ore Conveying",
+        "code": "3120"
+      },
+      {
+        "alias": "Coarse Ore Conveying System - Line 1",
+        "code": "3121"
+      },
+      {
+        "alias": "Coarse Ore Conveying System - Line 2",
+        "code": "3125"
+      },
+      {
+        "alias": "Coarse Ore Conveyor Area 1",
+        "code": "2142"
+      },
+      {
+        "alias": "Coarse Ore Conveyor Area 2",
+        "code": "2112"
+      },
+      {
+        "alias": "Coarse Ore Reclaim",
+        "code": "3140"
+      },
+      {
+        "alias": "Coarse Ore Reclaim System - Line 1",
+        "code": "3141"
+      },
+      {
+        "alias": "Coarse Ore Reclaim System - Line 2",
+        "code": "3145"
+      },
+      {
+        "alias": "Coarse Ore Stockpile Area 1",
+        "code": "2143"
+      },
+      {
+        "alias": "Coarse Ore Stockpile Area 2",
+        "code": "2113"
+      },
+      {
+        "alias": "Coarse Ore Storage",
+        "code": "3130"
+      },
+      {
+        "alias": "Coarse Ore Storage - Line 1",
+        "code": "3131"
+      },
+      {
+        "alias": "Coarse Ore Storage - Line 2",
+        "code": "3135"
+      },
+      {
+        "alias": "Cold Storage 1",
+        "code": "1450"
+      },
+      {
+        "alias": "Cold Storage 2",
+        "code": "2520"
+      },
+      {
+        "alias": "Commissioning & Ramp-Up Support",
+        "code": "8140"
+      },
+      {
+        "alias": "Commissioning Spares",
+        "code": "8520"
+      },
+      {
+        "alias": "Commissioning and Ramp-up 1",
+        "code": "6500"
+      },
+      {
+        "alias": "Commissioning and Ramp-up 2",
+        "code": "9500"
+      },
+      {
+        "alias": "Communications",
+        "code": "2800"
+      },
+      {
+        "alias": "Complex Building (Camp and Administration Building)",
+        "code": "7825"
+      },
+      {
+        "alias": "Computer Local Area Network (LAN)",
+        "code": "2830"
+      },
+      {
+        "alias": "Concentrate Filtration",
+        "code": "3430"
+      },
+      {
+        "alias": "Concentrate Filtration - Line 1",
+        "code": "3431"
+      },
+      {
+        "alias": "Concentrate Filtration - Line 2",
+        "code": "3435"
+      },
+      {
+        "alias": "Concentrate Storage Yard",
+        "code": "3940"
+      },
+      {
+        "alias": "Concentrator Building Shell",
+        "code": "3910"
+      },
+      {
+        "alias": "Concentrator Building Shell - Line 1-Filtration",
+        "code": "3913"
+      },
+      {
+        "alias": "Concentrator Building Shell - Line 1-Grinding",
+        "code": "3911"
+      },
+      {
+        "alias": "Concentrator Building Shell - Line 2-Filtration",
+        "code": "3917"
+      },
+      {
+        "alias": "Concentrator Building Shell - Line 2-Flotation & Regrind",
+        "code": "3916"
+      },
+      {
+        "alias": "Concentrator Building Shell - Line 2-Grinding",
+        "code": "3915"
+      },
+      {
+        "alias": "Concentrator Building Shell- Line 1-Flotation & Regrind",
+        "code": "3912"
+      },
+      {
+        "alias": "Concentrator Equipment",
+        "code": "1360"
+      },
+      {
+        "alias": "Concrete Batch Plant",
+        "code": "8240"
+      },
+      {
+        "alias": "Connection to All-Weather Road",
+        "code": "7110"
+      },
+      {
+        "alias": "Construction Camps",
+        "code": "8220"
+      },
+      {
+        "alias": "Construction Equipment (Owner Furnished)",
+        "code": "8260"
+      },
+      {
+        "alias": "Construction Facilities and Equipment",
+        "code": "8200"
+      },
+      {
+        "alias": "Construction Offices",
+        "code": "8210"
+      },
+      {
+        "alias": "Construction Services",
+        "code": "8300"
+      },
+      {
+        "alias": "Construction Site Area Offices",
+        "code": "8213"
+      },
+      {
+        "alias": "Construction Spares",
+        "code": "8510"
+      },
+      {
+        "alias": "Contingency 1",
+        "code": "6910"
+      },
+      {
+        "alias": "Contingency 2",
+        "code": "9910"
+      },
+      {
+        "alias": "Contract Services 2",
+        "code": "8770"
+      },
+      {
+        "alias": "Contract Services 3",
+        "code": "8810"
+      },
+      {
+        "alias": "Control Room - Line 1",
+        "code": "2514"
+      },
+      {
+        "alias": "Control Room - Line 2",
+        "code": "2515"
+      },
+      {
+        "alias": "Copper Concentrate",
+        "code": "3400"
+      },
+      {
+        "alias": "Copper Concentrate Thickening",
+        "code": "3420"
+      },
+      {
+        "alias": "Copper Concentrate Thickening - Line 1",
+        "code": "3421"
+      },
+      {
+        "alias": "Copper Concentrate Thickening - Line 2",
+        "code": "3425"
+      },
+      {
+        "alias": "Coring",
+        "code": "8740"
+      },
+      {
+        "alias": "Corporate Costs and Expenses 1",
+        "code": "6400"
+      },
+      {
+        "alias": "Corporate Costs and Expenses 2",
+        "code": "9400"
+      },
+      {
+        "alias": "Cost Contingency 1",
+        "code": "8900"
+      },
+      {
+        "alias": "Cost Contingency 2",
+        "code": "8910"
+      },
+      {
+        "alias": "Crushing and Screening Plants",
+        "code": "8250"
+      },
+      {
+        "alias": "Custom Control Building and Closed Parking Area",
+        "code": "7827"
+      },
+      {
+        "alias": "Customs / Shipping / Courier / Expediting 1",
+        "code": "6854"
+      },
+      {
+        "alias": "Customs / Shipping / Courier / Expediting 2",
+        "code": "9854"
+      },
+      {
+        "alias": "Cyclones",
+        "code": "3240"
+      },
+      {
+        "alias": "Cyclones - Line 1",
+        "code": "3241"
+      },
+      {
+        "alias": "Cyclones - Line 2",
+        "code": "3245"
+      },
+      {
+        "alias": "D&B",
+        "code": "1112"
+      },
+      {
+        "alias": "Dam #1 - Dam Development",
+        "code": "5571"
+      },
+      {
+        "alias": "Dam #1 - Pipelines",
+        "code": "5573"
+      },
+      {
+        "alias": "Dam #1 - Pumping",
+        "code": "5572"
+      },
+      {
+        "alias": "Dam #2 - Dam Development",
+        "code": "5561"
+      },
+      {
+        "alias": "Dam #2 - Pipelines",
+        "code": "5563"
+      },
+      {
+        "alias": "Dam #2 - Pumping",
+        "code": "5562"
+      },
+      {
+        "alias": "Dam #3 - Dam Development",
+        "code": "5551"
+      },
+      {
+        "alias": "Dam #3 - Pipelines",
+        "code": "5553"
+      },
+      {
+        "alias": "Dam #3 - Pumping",
+        "code": "5552"
+      },
+      {
+        "alias": "Dam #3 Gnom brook - Corridor",
+        "code": "2223"
+      },
+      {
+        "alias": "Dam #4 - Dam Development",
+        "code": "5581"
+      },
+      {
+        "alias": "Dam #4 - Pipelines",
+        "code": "5582"
+      },
+      {
+        "alias": "Dam #4 stream 16 - Corridor",
+        "code": "2224"
+      },
+      {
+        "alias": "Dam#1 from Left Peschanka River - Corridor",
+        "code": "2221"
+      },
+      {
+        "alias": "Dam#2 from stream 15 - Corridor",
+        "code": "2222"
+      },
+      {
+        "alias": "Diesel Buffer Tanks",
+        "code": "7839"
+      },
+      {
+        "alias": "Diesel Power Station",
+        "code": "7834"
+      },
+      {
+        "alias": "Dispatch Systems",
+        "code": "1140"
+      },
+      {
+        "alias": "Dozers",
+        "code": "1640"
+      },
+      {
+        "alias": "Drilling",
+        "code": "8710"
+      },
+      {
+        "alias": "Dumping",
+        "code": "1130"
+      },
+      {
+        "alias": "Duties",
+        "code": "8460"
+      },
+      {
+        "alias": "Earthworks and Foundation Preparation, Roads, Fencing and Street Lighting",
+        "code": "7811"
+      },
+      {
+        "alias": "Electrical Power",
+        "code": "8342"
+      },
+      {
+        "alias": "Electrical Power Distribution",
+        "code": "2300"
+      },
+      {
+        "alias": "Electrical Power Supply and Communications",
+        "code": "7300"
+      },
+      {
+        "alias": "Emergency Power",
+        "code": "2330"
+      },
+      {
+        "alias": "Engineering Audits / Consultants 1",
+        "code": "6851"
+      },
+      {
+        "alias": "Engineering Audits / Consultants 2",
+        "code": "9851"
+      },
+      {
+        "alias": "Engineering and Procurement",
+        "code": "8110"
+      },
+      {
+        "alias": "Environmental Services",
+        "code": "8670"
+      },
+      {
+        "alias": "Escalation 1",
+        "code": "6920"
+      },
+      {
+        "alias": "Escalation 2",
+        "code": "9920"
+      },
+      {
+        "alias": "Exploration & Drilling",
+        "code": "8700"
+      },
+      {
+        "alias": "Explosives Manufacture and Storage",
+        "code": "1470"
+      },
+      {
+        "alias": "Fencing and Signage",
+        "code": "2150"
+      },
+      {
+        "alias": "Fiber Optic Link",
+        "code": "7340"
+      },
+      {
+        "alias": "Fibre Optic Network",
+        "code": "2840"
+      },
+      {
+        "alias": "Fire Detection and Annunciation",
+        "code": "2870"
+      },
+      {
+        "alias": "Fire Protection 1",
+        "code": "2740"
+      },
+      {
+        "alias": "Fire Protection 2",
+        "code": "1550"
+      },
+      {
+        "alias": "Fire Station 1",
+        "code": "7826"
+      },
+      {
+        "alias": "Fire Station 2",
+        "code": "2790"
+      },
+      {
+        "alias": "Fire Water",
+        "code": "3720"
+      },
+      {
+        "alias": "Fire Water - Line 1",
+        "code": "3721"
+      },
+      {
+        "alias": "Fire Water - Line 2",
+        "code": "3725"
+      },
+      {
+        "alias": "Fire and Medical 1",
+        "code": "1419"
+      },
+      {
+        "alias": "Fire and Medical 2",
+        "code": "2518"
+      },
+      {
+        "alias": "First Fill",
+        "code": "8550"
+      },
+      {
+        "alias": "Flocculants Reagents",
+        "code": "3820"
+      },
+      {
+        "alias": "Flocculants Reagents - Line 1",
+        "code": "3821"
+      },
+      {
+        "alias": "Flocculants Reagents - Line 2",
+        "code": "3825"
+      },
+      {
+        "alias": "Flotation",
+        "code": "3300"
+      },
+      {
+        "alias": "Fluor Services",
+        "code": "8161"
+      },
+      {
+        "alias": "Freight and Duties",
+        "code": "8400"
+      },
+      {
+        "alias": "Fuel",
+        "code": "8341"
+      },
+      {
+        "alias": "Fuel Dispensing at MOC area",
+        "code": "1432"
+      },
+      {
+        "alias": "Fuel Storage 1",
+        "code": "2739"
+      },
+      {
+        "alias": "Fuel Storage Access Road",
+        "code": "2213"
+      },
+      {
+        "alias": "Fuel Storage Area 1",
+        "code": "2145"
+      },
+      {
+        "alias": "Fuel Storage Area 2",
+        "code": "2115"
+      },
+      {
+        "alias": "Fuel Storage Tanks & Transfer Pumping at MOC area",
+        "code": "1431"
+      },
+      {
+        "alias": "Fuel Storage and Dispensing at MOC area",
+        "code": "1430"
+      },
+      {
+        "alias": "Fuel Storage and Dispensing-Primary Crusher area",
+        "code": "2780"
+      },
+      {
+        "alias": "Garage",
+        "code": "7822"
+      },
+      {
+        "alias": "Gate House",
+        "code": "2570"
+      },
+      {
+        "alias": "Gatehouse Weigh Scale Station",
+        "code": "2572"
+      },
+      {
+        "alias": "General Office Expenses 1",
+        "code": "9812"
+      },
+      {
+        "alias": "General Office Expenses 2",
+        "code": "9812"
+      },
+      {
+        "alias": "General Purpose Scaffold and Heating/Hoarding",
+        "code": "8380"
+      },
+      {
+        "alias": "General Site Expenses (Tools and Other Non-Office Consumables) 1",
+        "code": "6828"
+      },
+      {
+        "alias": "General Site Expenses (Tools and Other Non-Office Consumables) 2",
+        "code": "9828"
+      },
+      {
+        "alias": "General Site Maintenance",
+        "code": "8330"
+      },
+      {
+        "alias": "General and Common Areas",
+        "code": "3900"
+      },
+      {
+        "alias": "Geology",
+        "code": "8713"
+      },
+      {
+        "alias": "Geotechnical",
+        "code": "8712"
+      },
+      {
+        "alias": "Gland Water",
+        "code": "3740"
+      },
+      {
+        "alias": "Gland Water - Line 1",
+        "code": "3741"
+      },
+      {
+        "alias": "Gland Water - Line 2",
+        "code": "3745"
+      },
+      {
+        "alias": "Graders",
+        "code": "1650"
+      },
+      {
+        "alias": "Grinding",
+        "code": "3200"
+      },
+      {
+        "alias": "Growth 1",
+        "code": "6930"
+      },
+      {
+        "alias": "Growth 2",
+        "code": "9930"
+      },
+      {
+        "alias": "Guard & Gate House",
+        "code": "2571"
+      },
+      {
+        "alias": "Guardhouse (Main Gatehouse) and Heated Rooms for Guardhouse Cars",
+        "code": "7829"
+      },
+      {
+        "alias": "HPGR - Line 1",
+        "code": "3232"
+      },
+      {
+        "alias": "HPGR - Line 2",
+        "code": "3236"
+      },
+      {
+        "alias": "HSE / PPE 1",
+        "code": "9827"
+      },
+      {
+        "alias": "HSE / PPE 2",
+        "code": "6827"
+      },
+      {
+        "alias": "HVAC System",
+        "code": "3920"
+      },
+      {
+        "alias": "HVAC System - Line 1",
+        "code": "3921"
+      },
+      {
+        "alias": "HVAC System - Line 2",
+        "code": "3925"
+      },
+      {
+        "alias": "Haul Roads",
+        "code": "1230"
+      },
+      {
+        "alias": "Hauling",
+        "code": "1120"
+      },
+      {
+        "alias": "Hazardous Waste Storage",
+        "code": "2736"
+      },
+      {
+        "alias": "Health, Safety, Environmental and Security",
+        "code": "8350"
+      },
+      {
+        "alias": "Heated Rooms, Dischage Point of Treated Waste Water, Marine Water Intake, Security Cabin, Auxillary platform",
+        "code": "7851"
+      },
+      {
+        "alias": "Heavy Vehicle Wash",
+        "code": "1421"
+      },
+      {
+        "alias": "Heavy Vehicle and Equipment Shop",
+        "code": "1411"
+      },
+      {
+        "alias": "Helicopter Pad",
+        "code": "2591"
+      },
+      {
+        "alias": "Hydrogeology",
+        "code": "8711"
+      },
+      {
+        "alias": "Ice Roads",
+        "code": "8290"
+      },
+      {
+        "alias": "Incinerator",
+        "code": "2738"
+      },
+      {
+        "alias": "Incremental Office Costs 1",
+        "code": "9811"
+      },
+      {
+        "alias": "Incremental Office Costs 2",
+        "code": "9811"
+      },
+      {
+        "alias": "Indirects",
+        "code": "8000"
+      },
+      {
+        "alias": "Inland Transportation",
+        "code": "8430"
+      },
+      {
+        "alias": "Insurance 1",
+        "code": "6750"
+      },
+      {
+        "alias": "Insurance 2",
+        "code": "9750"
+      },
+      {
+        "alias": "KPBVOwners Team (Labor and Expenses)",
+        "code": "9110"
+      },
+      {
+        "alias": "Kitchen & Dining",
+        "code": "2612"
+      },
+      {
+        "alias": "Laboratory",
+        "code": "2560"
+      },
+      {
+        "alias": "Landing Site",
+        "code": "2580"
+      },
+      {
+        "alias": "Levaya Peschanka Water Supply",
+        "code": "7410"
+      },
+      {
+        "alias": "Light Vehicle",
+        "code": "1330"
+      },
+      {
+        "alias": "Light Vehicle Wash",
+        "code": "1422"
+      },
+      {
+        "alias": "Light Vehicles For Construction",
+        "code": "8280"
+      },
+      {
+        "alias": "Light/Medium Vehicle Maintenance Shops",
+        "code": "1412"
+      },
+      {
+        "alias": "Lime",
+        "code": "3840"
+      },
+      {
+        "alias": "Lime - Line 1",
+        "code": "3841"
+      },
+      {
+        "alias": "Lime - Line 2",
+        "code": "3845"
+      },
+      {
+        "alias": "Loading",
+        "code": "1110"
+      },
+      {
+        "alias": "Long Range Planning (LRP)",
+        "code": "8620"
+      },
+      {
+        "alias": "Lube Storage",
+        "code": "1580"
+      },
+      {
+        "alias": "Lunch Room/ Refuge /Toilet",
+        "code": "8214"
+      },
+      {
+        "alias": "MINING",
+        "code": "1000"
+      },
+      {
+        "alias": "Machine",
+        "code": "8833"
+      },
+      {
+        "alias": "Main Construction Office",
+        "code": "8211"
+      },
+      {
+        "alias": "Maintenance Service Equipment",
+        "code": "1340"
+      },
+      {
+        "alias": "Maintenance Shop",
+        "code": "8831"
+      },
+      {
+        "alias": "Major Equipment (Shovels, Trucks, Dozers and Graders)",
+        "code": "1310"
+      },
+      {
+        "alias": "Maliy Anyui Bridge",
+        "code": "7612"
+      },
+      {
+        "alias": "Material Management Office",
+        "code": "8212"
+      },
+      {
+        "alias": "Mechanical Workshop",
+        "code": "7821"
+      },
+      {
+        "alias": "Metallurgy 1",
+        "code": "6852"
+      },
+      {
+        "alias": "Metallurgy 2",
+        "code": "9852"
+      },
+      {
+        "alias": "Mine Dispatch System",
+        "code": "1560"
+      },
+      {
+        "alias": "Mine Engineering",
+        "code": "8600"
+      },
+      {
+        "alias": "Mine Equipment",
+        "code": "1300"
+      },
+      {
+        "alias": "Mine Infrastructure",
+        "code": "1200"
+      },
+      {
+        "alias": "Mine Maintenance",
+        "code": "1600"
+      },
+      {
+        "alias": "Mine Maintenance - Overheads",
+        "code": "8830"
+      },
+      {
+        "alias": "Mine Maintenance and Operations Indirects",
+        "code": "8800"
+      },
+      {
+        "alias": "Mine Operations",
+        "code": "1100"
+      },
+      {
+        "alias": "Mine Operations Complex",
+        "code": "1410"
+      },
+      {
+        "alias": "Mine Operations/ Maintenance Electrical Room",
+        "code": "1416"
+      },
+      {
+        "alias": "Mine Operations/Maintenance 1",
+        "code": "2146"
+      },
+      {
+        "alias": "Mine Operations/Maintenance 2",
+        "code": "2116"
+      },
+      {
+        "alias": "Mine Operations/Maintenance Facilities",
+        "code": "1400"
+      },
+      {
+        "alias": "Mine Utilities",
+        "code": "1500"
+      },
+      {
+        "alias": "Mineral Processing Facilities",
+        "code": "3000"
+      },
+      {
+        "alias": "Minor Equipment",
+        "code": "1320"
+      },
+      {
+        "alias": "Misc. Buildings / Facilities",
+        "code": "2613"
+      },
+      {
+        "alias": "Miscellaneous Buildings 1",
+        "code": "1490"
+      },
+      {
+        "alias": "Miscellaneous Buildings 2",
+        "code": "2590"
+      },
+      {
+        "alias": "Mobile Communication",
+        "code": "1280"
+      },
+      {
+        "alias": "Molybdenum Cleaner",
+        "code": "3520"
+      },
+      {
+        "alias": "Molybdenum Concentrate Storage and Loadout",
+        "code": "3580"
+      },
+      {
+        "alias": "Molybdenum Dryer",
+        "code": "3570"
+      },
+      {
+        "alias": "Molybdenum Filtration",
+        "code": "3560"
+      },
+      {
+        "alias": "Molybdenum Final Cleaner",
+        "code": "3540"
+      },
+      {
+        "alias": "Molybdenum Flotation Reagents",
+        "code": "3830"
+      },
+      {
+        "alias": "Molybdenum Flotation Reagents - Line 1",
+        "code": "3831"
+      },
+      {
+        "alias": "Molybdenum Flotation Reagents - Line 2",
+        "code": "3835"
+      },
+      {
+        "alias": "Molybdenum Plant",
+        "code": "3500"
+      },
+      {
+        "alias": "Molybdenum Rougher/ Scavenger 1",
+        "code": "3510"
+      },
+      {
+        "alias": "Molybdenum Rougher/ Scavenger 2",
+        "code": "3515"
+      },
+      {
+        "alias": "Monitoring",
+        "code": "8660"
+      },
+      {
+        "alias": "Non-Hazardous Inorganic Waste",
+        "code": "2735"
+      },
+      {
+        "alias": "Non-Hazardous Organic Waste",
+        "code": "2734"
+      },
+      {
+        "alias": "Off-Shore Freight",
+        "code": "8410"
+      },
+      {
+        "alias": "Office 1",
+        "code": "2513"
+      },
+      {
+        "alias": "Office 2",
+        "code": "2731"
+      },
+      {
+        "alias": "Office 3",
+        "code": "1415"
+      },
+      {
+        "alias": "Office Costs 1",
+        "code": "6810"
+      },
+      {
+        "alias": "Office Costs 2",
+        "code": "9810"
+      },
+      {
+        "alias": "Office and Conference Room Furniture 1",
+        "code": "6825"
+      },
+      {
+        "alias": "Office and Conference Room Furniture 2",
+        "code": "9825"
+      },
+      {
+        "alias": "Offsite Infrastructure",
+        "code": "7000"
+      },
+      {
+        "alias": "Offsite Personel Transportation",
+        "code": "8371"
+      },
+      {
+        "alias": "On-Shore Freight",
+        "code": "8420"
+      },
+      {
+        "alias": "On-Site Road",
+        "code": "2200"
+      },
+      {
+        "alias": "On-Site Road 1",
+        "code": "2210"
+      },
+      {
+        "alias": "Onsite Personnel Transportation",
+        "code": "8372"
+      },
+      {
+        "alias": "Open Areas, Cargo Areas, Parking Lots, Helipad, Snow Storage and Roll Trailers Storage Areas",
+        "code": "7841"
+      },
+      {
+        "alias": "Operation Camp",
+        "code": "2600"
+      },
+      {
+        "alias": "Operational Spares",
+        "code": "8530"
+      },
+      {
+        "alias": "Operations Camp 1",
+        "code": "2148"
+      },
+      {
+        "alias": "Operations Camp 2",
+        "code": "2118"
+      },
+      {
+        "alias": "Ore Handling and Storage",
+        "code": "3100"
+      },
+      {
+        "alias": "Ore Quality",
+        "code": "8650"
+      },
+      {
+        "alias": "Ore Stockpiles",
+        "code": "1250"
+      },
+      {
+        "alias": "Other",
+        "code": "1170"
+      },
+      {
+        "alias": "Other Owner Cost 1",
+        "code": "6800"
+      },
+      {
+        "alias": "Other Owner Cost 2",
+        "code": "9800"
+      },
+      {
+        "alias": "Other Reagents",
+        "code": "3850"
+      },
+      {
+        "alias": "Other Reagents - Line 1",
+        "code": "3851"
+      },
+      {
+        "alias": "Other Reagents - Line 2",
+        "code": "3855"
+      },
+      {
+        "alias": "Others",
+        "code": "8344"
+      },
+      {
+        "alias": "Overhead Power Supply Line-110 kV",
+        "code": "7330"
+      },
+      {
+        "alias": "Overhead Power Supply Line-330 Kv (Bilibino - Peschanka)",
+        "code": "7325"
+      },
+      {
+        "alias": "Overhead Power Supply Line-330 Kv (Port Nagleynyn – Bilibino)",
+        "code": "7321"
+      },
+      {
+        "alias": "Overhead Power Supply Line-330 kV",
+        "code": "7320"
+      },
+      {
+        "alias": "Overland Pipeline 1",
+        "code": "7433"
+      },
+      {
+        "alias": "Overpass for the Inspection of Vehicles",
+        "code": "7824"
+      },
+      {
+        "alias": "Owner Contingency and Escalations 1",
+        "code": "6900"
+      },
+      {
+        "alias": "Owner Contingency and Escalations 2",
+        "code": "9900"
+      },
+      {
+        "alias": "Owner's Cost",
+        "code": "9000"
+      },
+      {
+        "alias": "Owner's Cost - Offsite Infrastructure",
+        "code": "6000"
+      },
+      {
+        "alias": "Owners Consultants and Third Party Contractors 1",
+        "code": "6850"
+      },
+      {
+        "alias": "Owners Consultants and Third Party Contractors 2",
+        "code": "9850"
+      },
+      {
+        "alias": "Owners Reserve 1",
+        "code": "6940"
+      },
+      {
+        "alias": "Owners Reserve 2",
+        "code": "9940"
+      },
+      {
+        "alias": "Owners Team (Labor and Expenses) - Port (Fuel Farm at Port, Substation Port, Port)",
+        "code": "6140"
+      },
+      {
+        "alias": "Owners Team (Labor and Expenses) - Power (OHL Southern, Northern and Switching Station Bilibino)",
+        "code": "6130"
+      },
+      {
+        "alias": "Owners Team (Labor and Expenses) - Road Northern",
+        "code": "6120"
+      },
+      {
+        "alias": "Owners Team (Labor and Expenses) - Road Southern",
+        "code": "6110"
+      },
+      {
+        "alias": "Parking",
+        "code": "2582"
+      },
+      {
+        "alias": "Pebble Crusher - Line 1",
+        "code": "3231"
+      },
+      {
+        "alias": "Pebble Crusher - Line 2",
+        "code": "3235"
+      },
+      {
+        "alias": "Pebble Crushing and HPGR System",
+        "code": "3230"
+      },
+      {
+        "alias": "People",
+        "code": "8750"
+      },
+      {
+        "alias": "Permit, License and Acquisitions 1",
+        "code": "9200"
+      },
+      {
+        "alias": "Permit, License and Acquisitions 2",
+        "code": "6200"
+      },
+      {
+        "alias": "Personnel Transportation Services",
+        "code": "8370"
+      },
+      {
+        "alias": "Peschanka Accommodations",
+        "code": "8221"
+      },
+      {
+        "alias": "Peschanka Kitchen & Dining",
+        "code": "8222"
+      },
+      {
+        "alias": "Peschanka Misc. Buildings / Facilities",
+        "code": "8223"
+      },
+      {
+        "alias": "Peschanka Pioneer Camp",
+        "code": "8224"
+      },
+      {
+        "alias": "Peschanka Site Temp. Access Road",
+        "code": "8233"
+      },
+      {
+        "alias": "Peschanka Temporary Construction Power",
+        "code": "8237"
+      },
+      {
+        "alias": "Peschanka Temporary Construction Water",
+        "code": "8238"
+      },
+      {
+        "alias": "Peschanka Temporary Fuel Storage and Dispensing",
+        "code": "8236"
+      },
+      {
+        "alias": "Peschanka Temporary Warehouses",
+        "code": "8239"
+      },
+      {
+        "alias": "Peschanka Waste Storage",
+        "code": "8235"
+      },
+      {
+        "alias": "Pevek Mobile Equipment",
+        "code": "7290"
+      },
+      {
+        "alias": "Pevek Offices",
+        "code": "8218"
+      },
+      {
+        "alias": "Pevek Staging Yard Operation",
+        "code": "8450"
+      },
+      {
+        "alias": "Pevek Temporary Facilities",
+        "code": "8231"
+      },
+      {
+        "alias": "Pevek Temporary Utilities",
+        "code": "8232"
+      },
+      {
+        "alias": "Piperacks",
+        "code": "7835"
+      },
+      {
+        "alias": "Pit Dewatering",
+        "code": "1150"
+      },
+      {
+        "alias": "Pit Utility",
+        "code": "1160"
+      },
+      {
+        "alias": "Plant Control System",
+        "code": "3930"
+      },
+      {
+        "alias": "Plant Control System - Line 1",
+        "code": "3931"
+      },
+      {
+        "alias": "Plant Control System - Line 2",
+        "code": "3935"
+      },
+      {
+        "alias": "Plant Mobile Equipment",
+        "code": "3950"
+      },
+      {
+        "alias": "Plant Operations Complex  2",
+        "code": "2511"
+      },
+      {
+        "alias": "Plant Operations Complex 1",
+        "code": "2510"
+      },
+      {
+        "alias": "Plant Operations Complex E-Room",
+        "code": "2512"
+      },
+      {
+        "alias": "Plant Operations/Maintenance Facilities",
+        "code": "2500"
+      },
+      {
+        "alias": "Plant Site Access Road",
+        "code": "2212"
+      },
+      {
+        "alias": "Plant and Instrument Air",
+        "code": "3750"
+      },
+      {
+        "alias": "Plant and Instrument Air - Line 1",
+        "code": "3751"
+      },
+      {
+        "alias": "Plant and Instrument Air - Line 2",
+        "code": "3755"
+      },
+      {
+        "alias": "Port Nagleynyn",
+        "code": "7800"
+      },
+      {
+        "alias": "Port Nagleynyn - Fuel Storage and Dispensing",
+        "code": "7870"
+      },
+      {
+        "alias": "Port Nagleynyn - Offshore - Berth for FNPP (Federal Part)",
+        "code": "7880"
+      },
+      {
+        "alias": "Port Nagleynyn - Offshore - Buildings and Facilities (Owner's Part)",
+        "code": "7850"
+      },
+      {
+        "alias": "Port Nagleynyn - Offshore - Infrastructure (Federal Part)",
+        "code": "7860"
+      },
+      {
+        "alias": "Port Nagleynyn - Onshore - Buildings and Facilities",
+        "code": "7820"
+      },
+      {
+        "alias": "Port Nagleynyn - Onshore - Earthworks, Roads, Lighting and Fencing",
+        "code": "7810"
+      },
+      {
+        "alias": "Port Nagleynyn - Onshore - Parking Areas, Storage Yards and Open Areas",
+        "code": "7840"
+      },
+      {
+        "alias": "Port Nagleynyn - Onshore - Power, Sewage, Water Utilities and Piperacks",
+        "code": "7830"
+      },
+      {
+        "alias": "Power",
+        "code": "1570"
+      },
+      {
+        "alias": "Power Supply",
+        "code": "1161"
+      },
+      {
+        "alias": "Primary Crusher Area 1",
+        "code": "2111"
+      },
+      {
+        "alias": "Primary Crusher Area 2",
+        "code": "2141"
+      },
+      {
+        "alias": "Primary Crusher and Coarse Ore Access",
+        "code": "2211"
+      },
+      {
+        "alias": "Primary Crushing 1",
+        "code": "3110"
+      },
+      {
+        "alias": "Primary Crushing 2",
+        "code": "3112"
+      },
+      {
+        "alias": "Primary Crushing and Feeding - Line 1",
+        "code": "3111"
+      },
+      {
+        "alias": "Primary Crushing and Feeding - Line 2",
+        "code": "3115"
+      },
+      {
+        "alias": "Process Air",
+        "code": "3760"
+      },
+      {
+        "alias": "Process Air - Line 1",
+        "code": "3761"
+      },
+      {
+        "alias": "Process Air - Line 2",
+        "code": "3765"
+      },
+      {
+        "alias": "Process Closed-circuit television",
+        "code": "2890"
+      },
+      {
+        "alias": "Process Plant Area 1",
+        "code": "2144"
+      },
+      {
+        "alias": "Process Plant Area 2",
+        "code": "2114"
+      },
+      {
+        "alias": "Process Utilities",
+        "code": "3700"
+      },
+      {
+        "alias": "Process Water",
+        "code": "3710"
+      },
+      {
+        "alias": "Process Water - Line 1",
+        "code": "3711"
+      },
+      {
+        "alias": "Process Water - Line 2",
+        "code": "3715"
+      },
+      {
+        "alias": "Professional Services 1",
+        "code": "8680"
+      },
+      {
+        "alias": "Professional Services 2",
+        "code": "8760"
+      },
+      {
+        "alias": "Professional Services 3",
+        "code": "8820"
+      },
+      {
+        "alias": "Project Services",
+        "code": "8100"
+      },
+      {
+        "alias": "Project Team 1",
+        "code": "9100"
+      },
+      {
+        "alias": "Project Team 2",
+        "code": "6100"
+      },
+      {
+        "alias": "Pumping",
+        "code": "7432"
+      },
+      {
+        "alias": "Pumping Stations",
+        "code": "7831"
+      },
+      {
+        "alias": "Pumping and Distribution",
+        "code": "2420"
+      },
+      {
+        "alias": "Quarries",
+        "code": "1800"
+      },
+      {
+        "alias": "RMC Owners Team (Labor and Expenses)",
+        "code": "9120"
+      },
+      {
+        "alias": "Radios 1",
+        "code": "6826"
+      },
+      {
+        "alias": "Radios 2",
+        "code": "9826"
+      },
+      {
+        "alias": "Radios 3",
+        "code": "2860"
+      },
+      {
+        "alias": "Raw Water Site Distribution",
+        "code": "2400"
+      },
+      {
+        "alias": "Raw Water and Cooling Water",
+        "code": "3730"
+      },
+      {
+        "alias": "Raw Water and Cooling Water - Line 1",
+        "code": "3731"
+      },
+      {
+        "alias": "Raw Water and Cooling Water - Line 2",
+        "code": "3735"
+      },
+      {
+        "alias": "Raw water supply",
+        "code": "7400"
+      },
+      {
+        "alias": "Reagents",
+        "code": "3800"
+      },
+      {
+        "alias": "Regrind Cyclones",
+        "code": "3320"
+      },
+      {
+        "alias": "Regrind Cyclones - Line 1",
+        "code": "3321"
+      },
+      {
+        "alias": "Regrind Cyclones - Line 2",
+        "code": "3325"
+      },
+      {
+        "alias": "Reheating Kitchen and Dining",
+        "code": "1418"
+      },
+      {
+        "alias": "Remote Control Room",
+        "code": "7700"
+      },
+      {
+        "alias": "Remote Control Room-Moscow",
+        "code": "7710"
+      },
+      {
+        "alias": "Road (Other Areas)",
+        "code": "2218"
+      },
+      {
+        "alias": "Road Construction",
+        "code": "1122"
+      },
+      {
+        "alias": "Road To Landing Site",
+        "code": "2217"
+      },
+      {
+        "alias": "Road from Waste Management Complex to Gatehouse",
+        "code": "2220"
+      },
+      {
+        "alias": "Road to Explosive Facility",
+        "code": "2219"
+      },
+      {
+        "alias": "Road to TSF",
+        "code": "2214"
+      },
+      {
+        "alias": "Road to TSF Barge",
+        "code": "2215"
+      },
+      {
+        "alias": "Road with all Other Bridges",
+        "code": "7611"
+      },
+      {
+        "alias": "Roads To Raw Water Intake",
+        "code": "2216"
+      },
+      {
+        "alias": "Runway",
+        "code": "2581"
+      },
+      {
+        "alias": "SAG Mill Ball Charging - Line 1",
+        "code": "3212"
+      },
+      {
+        "alias": "SAG Mill Ball Charging - Line 2",
+        "code": "3216"
+      },
+      {
+        "alias": "SAG Milling",
+        "code": "3210"
+      },
+      {
+        "alias": "SAG Milling - Line 1",
+        "code": "3211"
+      },
+      {
+        "alias": "SAG Milling - Line 2",
+        "code": "3215"
+      },
+      {
+        "alias": "SND-1 Quarry",
+        "code": "1710"
+      },
+      {
+        "alias": "Sag Mill Ball Charging and Lime Slaking Building Shell",
+        "code": "3960"
+      },
+      {
+        "alias": "Sampling",
+        "code": "8720"
+      },
+      {
+        "alias": "Satelite Earth Station",
+        "code": "7828"
+      },
+      {
+        "alias": "Satellite",
+        "code": "2850"
+      },
+      {
+        "alias": "Scheduling",
+        "code": "8630"
+      },
+      {
+        "alias": "Security Closed-circuit television",
+        "code": "2895"
+      },
+      {
+        "alias": "Seepage Collection",
+        "code": "5220"
+      },
+      {
+        "alias": "Seepage Monitoring",
+        "code": "5210"
+      },
+      {
+        "alias": "Seepage Monitoring and Pumping",
+        "code": "5200"
+      },
+      {
+        "alias": "Seepage Pipeline",
+        "code": "5240"
+      },
+      {
+        "alias": "Seepage Pumping",
+        "code": "5230"
+      },
+      {
+        "alias": "Sewage - Line 1",
+        "code": "3771"
+      },
+      {
+        "alias": "Sewage - Line 2",
+        "code": "3775"
+      },
+      {
+        "alias": "Sewage 1",
+        "code": "1520"
+      },
+      {
+        "alias": "Sewage 2",
+        "code": "2720"
+      },
+      {
+        "alias": "Sewage 3",
+        "code": "3770"
+      },
+      {
+        "alias": "Sewage Treatment Plant",
+        "code": "7833"
+      },
+      {
+        "alias": "Shoreline Stabilization and Access Dam, Open Storage Area, Cargo Berth, Dredging of Access Channel and Water Area",
+        "code": "7861"
+      },
+      {
+        "alias": "Short Range Planning (SRP)",
+        "code": "8610"
+      },
+      {
+        "alias": "Shovels 1",
+        "code": "1620"
+      },
+      {
+        "alias": "Shovels 2",
+        "code": "1111"
+      },
+      {
+        "alias": "Site Camp Accommodations 1",
+        "code": "6830"
+      },
+      {
+        "alias": "Site Camp Accommodations 2",
+        "code": "9830"
+      },
+      {
+        "alias": "Site Development 1",
+        "code": "7210"
+      },
+      {
+        "alias": "Site Development 2",
+        "code": "2100"
+      },
+      {
+        "alias": "Site Development and Onsite Infrastructure",
+        "code": "2000"
+      },
+      {
+        "alias": "Site Expenses 1",
+        "code": "6820"
+      },
+      {
+        "alias": "Site Expenses 2",
+        "code": "9820"
+      },
+      {
+        "alias": "Site Final Grading and Parking",
+        "code": "2140"
+      },
+      {
+        "alias": "Site Office Support (Catering) 1",
+        "code": "6822"
+      },
+      {
+        "alias": "Site Office Support (Catering) 2",
+        "code": "9822"
+      },
+      {
+        "alias": "Site Preparation 1",
+        "code": "5410"
+      },
+      {
+        "alias": "Site Preparation 2",
+        "code": "5110"
+      },
+      {
+        "alias": "Site Preparation 3",
+        "code": "2110"
+      },
+      {
+        "alias": "Site Preparation 4",
+        "code": "1210"
+      },
+      {
+        "alias": "Site Utilities",
+        "code": "2700"
+      },
+      {
+        "alias": "Site Vehicles (Purchase and Maintenance) 1",
+        "code": "6821"
+      },
+      {
+        "alias": "Site Vehicles (Purchase and Maintenance) 2",
+        "code": "9821"
+      },
+      {
+        "alias": "Slope",
+        "code": "8661"
+      },
+      {
+        "alias": "Software Specialty (PRISM, Primavera) 1",
+        "code": "6823"
+      },
+      {
+        "alias": "Software Specialty (PRISM, Primavera) 2",
+        "code": "9823"
+      },
+      {
+        "alias": "Spare Parts and First Fills",
+        "code": "8500"
+      },
+      {
+        "alias": "Specialty Consultants",
+        "code": "8150"
+      },
+      {
+        "alias": "Specialty Consultants (Fluor as Agents)",
+        "code": "8152"
+      },
+      {
+        "alias": "Specialty Consultants (GDK)",
+        "code": "8151"
+      },
+      {
+        "alias": "Specialty Field Services",
+        "code": "8360"
+      },
+      {
+        "alias": "Storage",
+        "code": "2410"
+      },
+      {
+        "alias": "Storage For Radioactive Source",
+        "code": "2760"
+      },
+      {
+        "alias": "Storm Water Collection and Storage",
+        "code": "2130"
+      },
+      {
+        "alias": "Storm Water Collection and Storage near MOC",
+        "code": "2131"
+      },
+      {
+        "alias": "Storm Water Collection and Storage near Process Plant",
+        "code": "2132"
+      },
+      {
+        "alias": "Storm Water Management",
+        "code": "1220"
+      },
+      {
+        "alias": "Storm Water Management-TSF Downstream",
+        "code": "5120"
+      },
+      {
+        "alias": "Substation 35/10kV",
+        "code": "7837"
+      },
+      {
+        "alias": "Substation Port",
+        "code": "7350"
+      },
+      {
+        "alias": "Sunk Assets 1",
+        "code": "6740"
+      },
+      {
+        "alias": "Sunk Assets 2",
+        "code": "9740"
+      },
+      {
+        "alias": "Survey",
+        "code": "8640"
+      },
+      {
+        "alias": "Switching Station Bilibino",
+        "code": "7360"
+      },
+      {
+        "alias": "TAILINGS",
+        "code": "5000"
+      },
+      {
+        "alias": "TSF Bypass Discharge",
+        "code": "5540"
+      },
+      {
+        "alias": "TSF Bypass Pipeline",
+        "code": "5530"
+      },
+      {
+        "alias": "TSF Bypass Pumping",
+        "code": "5520"
+      },
+      {
+        "alias": "TSF Downstream Dam Development",
+        "code": "5140"
+      },
+      {
+        "alias": "TSF Downstream Starter Dams",
+        "code": "5130"
+      },
+      {
+        "alias": "TSF Upsteam Seepage System",
+        "code": "5420"
+      },
+      {
+        "alias": "TSF Upstream Dam Development",
+        "code": "5440"
+      },
+      {
+        "alias": "TSF Upstream Starter Dams",
+        "code": "5430"
+      },
+      {
+        "alias": "TSF Water Management",
+        "code": "5500"
+      },
+      {
+        "alias": "TSF-1 Quarry",
+        "code": "1720"
+      },
+      {
+        "alias": "Tailings Overland Pipeline To TSF",
+        "code": "3630"
+      },
+      {
+        "alias": "Tailings Storage Facilities Haul Road",
+        "code": "5600"
+      },
+      {
+        "alias": "Tailings Storage Facility Downstream Dam",
+        "code": "5100"
+      },
+      {
+        "alias": "Tailings Storage Facility Upstream Dam",
+        "code": "5400"
+      },
+      {
+        "alias": "Tailings Thickening - Line 1",
+        "code": "3611"
+      },
+      {
+        "alias": "Tailings Thickening - Line 2",
+        "code": "3615"
+      },
+      {
+        "alias": "Tailings Thickening 1",
+        "code": "3600"
+      },
+      {
+        "alias": "Tailings Thickening 2",
+        "code": "3610"
+      },
+      {
+        "alias": "Taxes",
+        "code": "8470"
+      },
+      {
+        "alias": "Taxes and Insurance 1",
+        "code": "6700"
+      },
+      {
+        "alias": "Taxes and Insurance 2",
+        "code": "9700"
+      },
+      {
+        "alias": "Taxes and Levys 1",
+        "code": "6720"
+      },
+      {
+        "alias": "Taxes and Levys 2",
+        "code": "9720"
+      },
+      {
+        "alias": "Telecommunication (All Computers, Networking, Telephones, Etc.) 1",
+        "code": "6824"
+      },
+      {
+        "alias": "Telecommunication (All Computers, Networking, Telephones, Etc.) 2",
+        "code": "9824"
+      },
+      {
+        "alias": "Telephone",
+        "code": "2820"
+      },
+      {
+        "alias": "Temp. Facilities and Utilities",
+        "code": "8230"
+      },
+      {
+        "alias": "Temp. Facilities for Pioneer Works",
+        "code": "8234"
+      },
+      {
+        "alias": "Temporary Waste Storage Area with Incinerator",
+        "code": "7836"
+      },
+      {
+        "alias": "Tire Shop",
+        "code": "8832"
+      },
+      {
+        "alias": "Tools and Consumables (Owner Furnished)",
+        "code": "8270"
+      },
+      {
+        "alias": "Transformers 10/0.4kV",
+        "code": "7838"
+      },
+      {
+        "alias": "Trucks 1",
+        "code": "1121"
+      },
+      {
+        "alias": "Trucks 2",
+        "code": "1610"
+      },
+      {
+        "alias": "Upstream Collection Pond",
+        "code": "5510"
+      },
+      {
+        "alias": "Utilities",
+        "code": "7250"
+      },
+      {
+        "alias": "Utilities and Consumables",
+        "code": "8340"
+      },
+      {
+        "alias": "Valdivostok Staging Yard Operation",
+        "code": "8440"
+      },
+      {
+        "alias": "Vehicle Wash",
+        "code": "1420"
+      },
+      {
+        "alias": "Vendor Representatives",
+        "code": "8310"
+      },
+      {
+        "alias": "Vendor Reps 1",
+        "code": "6853"
+      },
+      {
+        "alias": "Vendor Reps 2",
+        "code": "9853"
+      },
+      {
+        "alias": "Wall Monitoring",
+        "code": "1270"
+      },
+      {
+        "alias": "Walls",
+        "code": "8662"
+      },
+      {
+        "alias": "Warehouse",
+        "code": "1414"
+      },
+      {
+        "alias": "Waste Management",
+        "code": "1530"
+      },
+      {
+        "alias": "Waste Management Complex",
+        "code": "2730"
+      },
+      {
+        "alias": "Waste Management Complex E-Room",
+        "code": "2733"
+      },
+      {
+        "alias": "Waste Rock Piles",
+        "code": "1240"
+      },
+      {
+        "alias": "Water 1",
+        "code": "1510"
+      },
+      {
+        "alias": "Water 2",
+        "code": "8343"
+      },
+      {
+        "alias": "Water 3",
+        "code": "8663"
+      },
+      {
+        "alias": "Water 4",
+        "code": "2710"
+      },
+      {
+        "alias": "Water Diversion System - Dam #3",
+        "code": "5550"
+      },
+      {
+        "alias": "Water Diversion System Dam #1",
+        "code": "5570"
+      },
+      {
+        "alias": "Water Diversion System Dam #2",
+        "code": "5560"
+      },
+      {
+        "alias": "Water Diversion System Dam #4",
+        "code": "5580"
+      },
+      {
+        "alias": "Water Monitoring Wells",
+        "code": "1260"
+      },
+      {
+        "alias": "Water Reclaim",
+        "code": "5300"
+      },
+      {
+        "alias": "Water Reclaim Intake",
+        "code": "5310"
+      },
+      {
+        "alias": "Water Reclaim Pipelines",
+        "code": "5330"
+      },
+      {
+        "alias": "Water Reclaim Pumping",
+        "code": "5320"
+      },
+      {
+        "alias": "Water Treatment Plant and Water Storage Tanks",
+        "code": "7832"
+      },
+      {
+        "alias": "Wells",
+        "code": "7431"
+      },
+      {
+        "alias": "Working Capital 1",
+        "code": "6600"
+      },
+      {
+        "alias": "Working Capital 2",
+        "code": "9600"
+      },
+      {
+        "alias": "Workshops",
+        "code": "2517"
+      },
+      {
+        "alias": "Yard at Pevek",
+        "code": "7200"
+      }
+    ],
+    "aliases_ru": [
+      {
+        "alias": "Аварийное электроснабжение",
+        "code": "2330"
+      },
+      {
+        "alias": "Активы с амортизацией",
+        "code": "9740"
+      },
+      {
+        "alias": "Аудиторы / консультанты по проектированию и конструированию",
+        "code": "9851"
+      },
+      {
+        "alias": "Байпасная перекачка ХВХ",
+        "code": "5520"
+      },
+      {
+        "alias": "Байпасный сброс ХВХ",
+        "code": "5540"
+      },
+      {
+        "alias": "Байпасный трубопровод ХВХ",
+        "code": "5530"
+      },
+      {
+        "alias": "Банковское технико-экономическое обоснование",
+        "code": "8160"
+      },
+      {
+        "alias": "Береговой фрахт",
+        "code": "8420"
+      },
+      {
+        "alias": "Бетонный завод",
+        "code": "8240"
+      },
+      {
+        "alias": "Бульдозеры",
+        "code": "1640"
+      },
+      {
+        "alias": "Бурение",
+        "code": "8710"
+      },
+      {
+        "alias": "Буро-взрывные работы",
+        "code": "1112"
+      },
+      {
+        "alias": "ВЛ 35 кВ распределения электроэнергии на площадке,",
+        "code": "2320"
+      },
+      {
+        "alias": "ВПВД - Линия 1",
+        "code": "3232"
+      },
+      {
+        "alias": "ВПВД - Линия 2",
+        "code": "3236"
+      },
+      {
+        "alias": "ВПП",
+        "code": "2581"
+      },
+      {
+        "alias": "Вахтовые поселки для строительного персонала",
+        "code": "8220"
+      },
+      {
+        "alias": "Вахтовый поселок эксплуатационного персонала",
+        "code": "2600"
+      },
+      {
+        "alias": "Вахтовый поселок эксплуатационного персонала 1",
+        "code": "2148"
+      },
+      {
+        "alias": "Вахтовый поселок эксплуатационного персонала 2",
+        "code": "2118"
+      },
+      {
+        "alias": "Вертолетная площадка",
+        "code": "2591"
+      },
+      {
+        "alias": "Верхний пруд-отстойник",
+        "code": "5510"
+      },
+      {
+        "alias": "Внеплощадочные объекты",
+        "code": "7000"
+      },
+      {
+        "alias": "Внутриплощадочные дороги",
+        "code": "2200"
+      },
+      {
+        "alias": "Внутриплощадочные дороги 1",
+        "code": "2210"
+      },
+      {
+        "alias": "Вода 1",
+        "code": "1510"
+      },
+      {
+        "alias": "Вода 2",
+        "code": "8343"
+      },
+      {
+        "alias": "Вода 3",
+        "code": "8663"
+      },
+      {
+        "alias": "Вода 4",
+        "code": "2710"
+      },
+      {
+        "alias": "Водоподготовка вахтового поселка",
+        "code": "2640"
+      },
+      {
+        "alias": "Водоснабжение талика реки Баимка",
+        "code": "7430"
+      },
+      {
+        "alias": "Воздух",
+        "code": "1540"
+      },
+      {
+        "alias": "Воздушная ЛЭП 110 кВ",
+        "code": "7330"
+      },
+      {
+        "alias": "Воздушная ЛЭП 220 кВ",
+        "code": "7320"
+      },
+      {
+        "alias": "Временные инженерные системы в Певеке",
+        "code": "8232"
+      },
+      {
+        "alias": "Временные сооружения в Певеке",
+        "code": "8231"
+      },
+      {
+        "alias": "Временные сооружения хранения и распределения топлива, Песчанка",
+        "code": "8236"
+      },
+      {
+        "alias": "Вспомогательная техника",
+        "code": "1320"
+      },
+      {
+        "alias": "Вспомогательные инженерные системы",
+        "code": "7250"
+      },
+      {
+        "alias": "Вспомогательные инженерные системы и расходные материалы",
+        "code": "8340"
+      },
+      {
+        "alias": "Вспомогательные инженерные системы карьера",
+        "code": "1160"
+      },
+      {
+        "alias": "Вспомогательные инженерные системы площадки",
+        "code": "2700"
+      },
+      {
+        "alias": "Вспомогательные инженерные системы рудника",
+        "code": "1500"
+      },
+      {
+        "alias": "Вспомогательные инженерные системы технологии",
+        "code": "3700"
+      },
+      {
+        "alias": "Вспомогательные объекты 1",
+        "code": "2149"
+      },
+      {
+        "alias": "Вспомогательные объекты 2",
+        "code": "2119"
+      },
+      {
+        "alias": "Вспомогательные сооружения",
+        "code": "2583"
+      },
+      {
+        "alias": "Вторая перечистная флотация",
+        "code": "3360"
+      },
+      {
+        "alias": "Вторая перечистная флотация - Линия 1",
+        "code": "3361"
+      },
+      {
+        "alias": "Вторая перечистная флотация - Линия 2",
+        "code": "3365"
+      },
+      {
+        "alias": "Геология",
+        "code": "8713"
+      },
+      {
+        "alias": "Гидрогеология",
+        "code": "8711"
+      },
+      {
+        "alias": "Главный строительный офис",
+        "code": "8211"
+      },
+      {
+        "alias": "Горнодобывающий комплекс. Эксплуатация",
+        "code": "1410"
+      },
+      {
+        "alias": "Грейдеры",
+        "code": "1650"
+      },
+      {
+        "alias": "Грузовые ТС 1",
+        "code": "1610"
+      },
+      {
+        "alias": "Грузовые ТС 2",
+        "code": "1121"
+      },
+      {
+        "alias": "Группа Заказчиков KPBV (трудозатраты и расходы)",
+        "code": "9110"
+      },
+      {
+        "alias": "Группа Заказчиков РГК (трудозатраты и расходы)",
+        "code": "9120"
+      },
+      {
+        "alias": "Группа Проекта 1",
+        "code": "9100"
+      },
+      {
+        "alias": "Дамба выше хвостохранилища",
+        "code": "5400"
+      },
+      {
+        "alias": "Диспетчерская дистанционного управления",
+        "code": "7700"
+      },
+      {
+        "alias": "Диспетчерская дистанционного управления – Москва",
+        "code": "7710"
+      },
+      {
+        "alias": "Диспетчерская система рудника",
+        "code": "1560"
+      },
+      {
+        "alias": "Диспетчерские системы",
+        "code": "1140"
+      },
+      {
+        "alias": "Добыча полезных ископаемых",
+        "code": "1000"
+      },
+      {
+        "alias": "Договорные услуги 2",
+        "code": "8770"
+      },
+      {
+        "alias": "Договорные услуги 3",
+        "code": "8810"
+      },
+      {
+        "alias": "Додрабливание критического класса и система валкового пресса высокого давления (ВПВД)",
+        "code": "3230"
+      },
+      {
+        "alias": "Доизмельчение коллективного концентрата",
+        "code": "3330"
+      },
+      {
+        "alias": "Доизмельчение коллективного концентрата - Линия 1",
+        "code": "3331"
+      },
+      {
+        "alias": "Доизмельчение коллективного концентрата - Линия 2",
+        "code": "3335"
+      },
+      {
+        "alias": "Долгосрочное планирование",
+        "code": "8620"
+      },
+      {
+        "alias": "Дорога (прочие участки)",
+        "code": "2218"
+      },
+      {
+        "alias": "Дорога к посадочной площадке",
+        "code": "2217"
+      },
+      {
+        "alias": "Дорога круглогодичного цикла",
+        "code": "7600"
+      },
+      {
+        "alias": "Дороги до площадки забора сырой воды",
+        "code": "2216"
+      },
+      {
+        "alias": "Дробилка додрабливания критического класса - Линия 1",
+        "code": "3231"
+      },
+      {
+        "alias": "Дробилка додрабливания критического класса - Линия 2",
+        "code": "3235"
+      },
+      {
+        "alias": "Дробилка крупного дробления и доступ к крупнодробленной руде",
+        "code": "2211"
+      },
+      {
+        "alias": "Дробильно-сортировочные установки",
+        "code": "8250"
+      },
+      {
+        "alias": "Жилые помещения",
+        "code": "2611"
+      },
+      {
+        "alias": "Жилые помещения в Песчанке",
+        "code": "8221"
+      },
+      {
+        "alias": "Жилые помещения вахтового поселка на площадке",
+        "code": "9830"
+      },
+      {
+        "alias": "Забор регенерации воды",
+        "code": "5310"
+      },
+      {
+        "alias": "Заводоуправление комплекса (офисы, столовая, раздевалка, медпункт и пождепо)",
+        "code": "2511"
+      },
+      {
+        "alias": "Заводоуправление комплекса 1",
+        "code": "2510"
+      },
+      {
+        "alias": "Загрузка размольных шаров в мельницу полусамоизмельчения - Линия 1",
+        "code": "3212"
+      },
+      {
+        "alias": "Загрузка размольных шаров в мельницу полусамоизмельчения - Линия 2",
+        "code": "3216"
+      },
+      {
+        "alias": "Запасные части для капитального и страхового ремонта",
+        "code": "8540"
+      },
+      {
+        "alias": "Запасные части на период СМР",
+        "code": "8510"
+      },
+      {
+        "alias": "Запасные части на период эксплуатации",
+        "code": "8530"
+      },
+      {
+        "alias": "Запчасти на период ПНР",
+        "code": "8520"
+      },
+      {
+        "alias": "Здание проходной",
+        "code": "2570"
+      },
+      {
+        "alias": "Здания и сооружения вахтового поселка",
+        "code": "2610"
+      },
+      {
+        "alias": "Зимники",
+        "code": "8290"
+      },
+      {
+        "alias": "Зональное освещение",
+        "code": "2750"
+      },
+      {
+        "alias": "Известь",
+        "code": "3840"
+      },
+      {
+        "alias": "Известь - Линия 1",
+        "code": "3841"
+      },
+      {
+        "alias": "Известь - Линия 2",
+        "code": "3845"
+      },
+      {
+        "alias": "Измельчение",
+        "code": "3200"
+      },
+      {
+        "alias": "Измельчение в шаровой мельнице",
+        "code": "3220"
+      },
+      {
+        "alias": "Измельчение в шаровой мельнице - Линия 1",
+        "code": "3221"
+      },
+      {
+        "alias": "Измельчение в шаровой мельнице - Линия 2",
+        "code": "3225"
+      },
+      {
+        "alias": "Изыскания",
+        "code": "8640"
+      },
+      {
+        "alias": "Инженерно-геологические изыскания",
+        "code": "8712"
+      },
+      {
+        "alias": "Инструменты и расходные материалы (поставляются Заказчиком)",
+        "code": "8270"
+      },
+      {
+        "alias": "Инфраструктура рудника",
+        "code": "1200"
+      },
+      {
+        "alias": "Источник питания",
+        "code": "1161"
+      },
+      {
+        "alias": "КПП и здание проходной",
+        "code": "2571"
+      },
+      {
+        "alias": "Канализация - Линия 1",
+        "code": "3771"
+      },
+      {
+        "alias": "Канализация - Линия 2",
+        "code": "3775"
+      },
+      {
+        "alias": "Канализация 1",
+        "code": "1520"
+      },
+      {
+        "alias": "Канализация 2",
+        "code": "2720"
+      },
+      {
+        "alias": "Канализация 3",
+        "code": "3770"
+      },
+      {
+        "alias": "Капитализированный износ и амортизация",
+        "code": "9710"
+      },
+      {
+        "alias": "Качество руды",
+        "code": "8650"
+      },
+      {
+        "alias": "Количественный анализ",
+        "code": "8730"
+      },
+      {
+        "alias": "Коллективная основная флотация",
+        "code": "3310"
+      },
+      {
+        "alias": "Коллективная основная флотация - Линия 1",
+        "code": "3311"
+      },
+      {
+        "alias": "Коллективная основная флотация - Линия 2",
+        "code": "3315"
+      },
+      {
+        "alias": "Комиссионные за проведение банковских операций",
+        "code": "9730"
+      },
+      {
+        "alias": "Комплекс утилизации отходов",
+        "code": "2730"
+      },
+      {
+        "alias": "Конвейерная транспортировка крупнодробленной руды",
+        "code": "3120"
+      },
+      {
+        "alias": "Консультанты Заказчика и сторонние подрядчики",
+        "code": "9850"
+      },
+      {
+        "alias": "Контроль",
+        "code": "8660"
+      },
+      {
+        "alias": "Контроль и откачка инфильтрата",
+        "code": "5200"
+      },
+      {
+        "alias": "Контроль инфильтрата",
+        "code": "5210"
+      },
+      {
+        "alias": "Контроль стенок",
+        "code": "1270"
+      },
+      {
+        "alias": "Корпоративные расходы и затраты",
+        "code": "9400"
+      },
+      {
+        "alias": "Корпус здания загрузки размольных шаров в мельницу полусамоизмельчения и гашения извести",
+        "code": "3960"
+      },
+      {
+        "alias": "Корпус обогатительной фабрики",
+        "code": "3910"
+      },
+      {
+        "alias": "Корпус обогатительной фабрики - Линия 1: доизмельчение флотации",
+        "code": "3912"
+      },
+      {
+        "alias": "Корпус обогатительной фабрики - Линия 1: измельчение",
+        "code": "3911"
+      },
+      {
+        "alias": "Корпус обогатительной фабрики - Линия 1: фильтрация",
+        "code": "3913"
+      },
+      {
+        "alias": "Корпус обогатительной фабрики - Линия 2: доизмельчение флотации",
+        "code": "3916"
+      },
+      {
+        "alias": "Корпус обогатительной фабрики - Линия 2: измельчение",
+        "code": "3915"
+      },
+      {
+        "alias": "Корпус обогатительной фабрики - Линия 2: фильтрация",
+        "code": "3917"
+      },
+      {
+        "alias": "Котельная вахтового поселка",
+        "code": "2620"
+      },
+      {
+        "alias": "Краткосрочное планирование",
+        "code": "8610"
+      },
+      {
+        "alias": "Кухня и столовая 1",
+        "code": "2612"
+      },
+      {
+        "alias": "Кухня и столовая 2",
+        "code": "1418"
+      },
+      {
+        "alias": "Кухня и столовая в Песчанке",
+        "code": "8222"
+      },
+      {
+        "alias": "Лаборатория",
+        "code": "2560"
+      },
+      {
+        "alias": "Легковые ТС",
+        "code": "1330"
+      },
+      {
+        "alias": "Леса общего назначения и обогрев/ временные заборы",
+        "code": "8380"
+      },
+      {
+        "alias": "Локальная сеть (ЛВС)",
+        "code": "2830"
+      },
+      {
+        "alias": "Мастерские",
+        "code": "2517"
+      },
+      {
+        "alias": "Машина основной/ контрольной флотации молибдена",
+        "code": "8833"
+      },
+      {
+        "alias": "Машина основной/ контрольной флотации молибдена 1",
+        "code": "3510"
+      },
+      {
+        "alias": "Машина основной/ контрольной флотации молибдена 2",
+        "code": "3515"
+      },
+      {
+        "alias": "Мебель для офисов и переговорных",
+        "code": "9825"
+      },
+      {
+        "alias": "Медный концентрат",
+        "code": "3400"
+      },
+      {
+        "alias": "Мельница полусамоизмельчения",
+        "code": "3210"
+      },
+      {
+        "alias": "Металлургия",
+        "code": "9852"
+      },
+      {
+        "alias": "Мобильная связь",
+        "code": "1280"
+      },
+      {
+        "alias": "Мойка ТС",
+        "code": "1420"
+      },
+      {
+        "alias": "Мойка ТС большой грузоподъемности",
+        "code": "1421"
+      },
+      {
+        "alias": "Мойка легковых ТС",
+        "code": "1422"
+      },
+      {
+        "alias": "Молибденовая установка",
+        "code": "3500"
+      },
+      {
+        "alias": "Морской фрахт",
+        "code": "8410"
+      },
+      {
+        "alias": "Мусоросжигательная установка (уточнить)",
+        "code": "2738"
+      },
+      {
+        "alias": "Наблюдательные скважины",
+        "code": "1260"
+      },
+      {
+        "alias": "Наземные перевозки",
+        "code": "8430"
+      },
+      {
+        "alias": "Наземный трубопровод транспортировки хвостов в хвостохранилище 1",
+        "code": "7433"
+      },
+      {
+        "alias": "Наземный трубопровод транспортировки хвостов в хвостохранилище 2",
+        "code": "3630"
+      },
+      {
+        "alias": "Налоги 1",
+        "code": "8470"
+      },
+      {
+        "alias": "Налоги 2",
+        "code": "8500"
+      },
+      {
+        "alias": "Налоги 3",
+        "code": "8344"
+      },
+      {
+        "alias": "Налоги и сборы",
+        "code": "9720"
+      },
+      {
+        "alias": "Налоги и страхование",
+        "code": "9700"
+      },
+      {
+        "alias": "Направление в отвалы",
+        "code": "1130"
+      },
+      {
+        "alias": "Насосные станции",
+        "code": "7432"
+      },
+      {
+        "alias": "Неопасные неорганические отходы",
+        "code": "2735"
+      },
+      {
+        "alias": "Неопасные органические отходы",
+        "code": "2734"
+      },
+      {
+        "alias": "Непредвиденные расходы",
+        "code": "9910"
+      },
+      {
+        "alias": "Непредвиденные расходы 1",
+        "code": "8900"
+      },
+      {
+        "alias": "Непредвиденные расходы 2",
+        "code": "8910"
+      },
+      {
+        "alias": "Непредвиденные расходы и надбавки и скидки Заказчика",
+        "code": "9900"
+      },
+      {
+        "alias": "Непроизводственные объекты",
+        "code": "8000"
+      },
+      {
+        "alias": "ОТБОС / СИЗ 1",
+        "code": "9827"
+      },
+      {
+        "alias": "Обеспечение безопасности в местах доступа",
+        "code": "2880"
+      },
+      {
+        "alias": "Оборотный капитал",
+        "code": "9600"
+      },
+      {
+        "alias": "Обустройство площадки 1",
+        "code": "7210"
+      },
+      {
+        "alias": "Обустройство площадки 2",
+        "code": "2100"
+      },
+      {
+        "alias": "Обустройство площадки и внутриплощадочная инфраструктура",
+        "code": "2000"
+      },
+      {
+        "alias": "Общее содержание площадки",
+        "code": "8330"
+      },
+      {
+        "alias": "Общехозяйственные офисные затраты",
+        "code": "9812"
+      },
+      {
+        "alias": "Общехозяйственные расходы площадки (инструменты и прочие неофисные расходные материалы)",
+        "code": "9828"
+      },
+      {
+        "alias": "Объекты обогащения полезных ископаемых",
+        "code": "3000"
+      },
+      {
+        "alias": "Объекты эксплуатации и обслуживания комплекса",
+        "code": "2500"
+      },
+      {
+        "alias": "Объекты эксплуатации и техобслуживания рудника",
+        "code": "1400"
+      },
+      {
+        "alias": "Ограждения и информационные указатели",
+        "code": "2150"
+      },
+      {
+        "alias": "Окончательная вертикальная планировка площадки и обустройство мест стоянки техники",
+        "code": "2140"
+      },
+      {
+        "alias": "Окончательная перечистная флотация молибдена",
+        "code": "3540"
+      },
+      {
+        "alias": "Операторная - Линия 1",
+        "code": "2514"
+      },
+      {
+        "alias": "Операторная - Линия 2",
+        "code": "2515"
+      },
+      {
+        "alias": "Оптоволоконная сеть",
+        "code": "2840"
+      },
+      {
+        "alias": "Оптоволоконный канал",
+        "code": "7340"
+      },
+      {
+        "alias": "Организация ливневых стоков",
+        "code": "1220"
+      },
+      {
+        "alias": "Организация ливневых стоков ниже хвостохранилища",
+        "code": "5120"
+      },
+      {
+        "alias": "Основная техника (экскаваторы, грузовые ТС, бульдозеры и грейдеры)",
+        "code": "1310"
+      },
+      {
+        "alias": "Основные и общие участки",
+        "code": "3900"
+      },
+      {
+        "alias": "От КПП до штабеля крупнодробленной руды",
+        "code": "2214"
+      },
+      {
+        "alias": "От въезда на площадку комплекса до хвостохранилища",
+        "code": "2215"
+      },
+      {
+        "alias": "От склада горючего до КПП",
+        "code": "2213"
+      },
+      {
+        "alias": "Отбор керна",
+        "code": "8740"
+      },
+      {
+        "alias": "Отбор проб",
+        "code": "8720"
+      },
+      {
+        "alias": "Отвалы пустой породы",
+        "code": "1240"
+      },
+      {
+        "alias": "Откачка воды из карьера",
+        "code": "1150"
+      },
+      {
+        "alias": "Отходы вахтового поселка",
+        "code": "2650"
+      },
+      {
+        "alias": "Офис 1",
+        "code": "2513"
+      },
+      {
+        "alias": "Офис 2",
+        "code": "2731"
+      },
+      {
+        "alias": "Офис 3",
+        "code": "1415"
+      },
+      {
+        "alias": "Офис по работе с материалами",
+        "code": "8212"
+      },
+      {
+        "alias": "Офисные помещения в Певеке",
+        "code": "8218"
+      },
+      {
+        "alias": "Офисные расходы",
+        "code": "9810"
+      },
+      {
+        "alias": "Офисные расходы с учетом их приращения",
+        "code": "9811"
+      },
+      {
+        "alias": "Охрана труда, безопасность, окружающая среда и обеспечение безопасности",
+        "code": "8350"
+      },
+      {
+        "alias": "Очистка стоков вахтового поселка",
+        "code": "2660"
+      },
+      {
+        "alias": "Первичная дамба ниже хвостохранилища",
+        "code": "5130"
+      },
+      {
+        "alias": "Первичное дробление 1",
+        "code": "3110"
+      },
+      {
+        "alias": "Первичное дробление и подача через питатели - Линия 1",
+        "code": "3111"
+      },
+      {
+        "alias": "Первичное дробление и подача через питатели - Линия 2",
+        "code": "3115"
+      },
+      {
+        "alias": "Первичные дамбы выше хвостохранилища",
+        "code": "5430"
+      },
+      {
+        "alias": "Первоначальная загрузка",
+        "code": "8550"
+      },
+      {
+        "alias": "Перевозка персонала за пределами площадки",
+        "code": "8371"
+      },
+      {
+        "alias": "Перевозка персонала на площадке",
+        "code": "8372"
+      },
+      {
+        "alias": "Передвижное оборудование в Певеке",
+        "code": "7290"
+      },
+      {
+        "alias": "Передвижное оборудование технологического комплекса",
+        "code": "3950"
+      },
+      {
+        "alias": "Перекачка и распределение",
+        "code": "2420"
+      },
+      {
+        "alias": "Перекачка инфильтрата",
+        "code": "5230"
+      },
+      {
+        "alias": "Перекачка регенерации воды",
+        "code": "5320"
+      },
+      {
+        "alias": "Перечистная / контрольная флотация",
+        "code": "3350"
+      },
+      {
+        "alias": "Перечистная / контрольная флотация - Линия 1",
+        "code": "3351"
+      },
+      {
+        "alias": "Перечистная / контрольная флотация - Линия 2",
+        "code": "3355"
+      },
+      {
+        "alias": "Перечистная флотация молибдена",
+        "code": "3520"
+      },
+      {
+        "alias": "Персонал",
+        "code": "8750"
+      },
+      {
+        "alias": "Песчанка, прочие позиции Здания и сооружения",
+        "code": "8223"
+      },
+      {
+        "alias": "Пионерный вахтовый поселок проекта Песчанка;",
+        "code": "8224"
+      },
+      {
+        "alias": "Площадка Песчанка, временная Подъездная дорога",
+        "code": "8233"
+      },
+      {
+        "alias": "Площадка в Певеке",
+        "code": "7200"
+      },
+      {
+        "alias": "Площадка хранения концентрата",
+        "code": "3940"
+      },
+      {
+        "alias": "Площадки для складирования руды",
+        "code": "1250"
+      },
+      {
+        "alias": "Погрузка",
+        "code": "1110"
+      },
+      {
+        "alias": "Подготовительные объекты эксплуатации, содержания и обслуживания рудника",
+        "code": "8800"
+      },
+      {
+        "alias": "Подготовка площадки 1",
+        "code": "5410"
+      },
+      {
+        "alias": "Подготовка площадки 2",
+        "code": "5110"
+      },
+      {
+        "alias": "Подготовка площадки 3",
+        "code": "2110"
+      },
+      {
+        "alias": "Подготовка площадки 4",
+        "code": "1210"
+      },
+      {
+        "alias": "Подъездная дорога к площадке комплекса 1",
+        "code": "7100"
+      },
+      {
+        "alias": "Подъездная дорога к площадке комплекса 2",
+        "code": "2212"
+      },
+      {
+        "alias": "Подъездные дороги",
+        "code": "1230"
+      },
+      {
+        "alias": "Пожарная вода",
+        "code": "3720"
+      },
+      {
+        "alias": "Пожарная вода - Линия 1",
+        "code": "3721"
+      },
+      {
+        "alias": "Пожарная вода - Линия 2",
+        "code": "3725"
+      },
+      {
+        "alias": "Пожарная защита 1",
+        "code": "2740"
+      },
+      {
+        "alias": "Пожарная защита 2",
+        "code": "1550"
+      },
+      {
+        "alias": "Пождепо и медпункт 1",
+        "code": "1419"
+      },
+      {
+        "alias": "Пождепо и медпункт 2",
+        "code": "2518"
+      },
+      {
+        "alias": "Полусамоизмельчение - Линия 1",
+        "code": "3211"
+      },
+      {
+        "alias": "Полусамоизмельчение - Линия 2",
+        "code": "3215"
+      },
+      {
+        "alias": "Посадочная площадка",
+        "code": "2580"
+      },
+      {
+        "alias": "Представители Поставщиков",
+        "code": "8310"
+      },
+      {
+        "alias": "Представители поставщиков",
+        "code": "9853"
+      },
+      {
+        "alias": "Природоохранные услуги",
+        "code": "8670"
+      },
+      {
+        "alias": "Проектно-конструкторские работы для рудника",
+        "code": "8600"
+      },
+      {
+        "alias": "Проектно-конструкторские работы и снабжение",
+        "code": "8110"
+      },
+      {
+        "alias": "Проектные услуги",
+        "code": "8100"
+      },
+      {
+        "alias": "Производство и хранение взрывчатых веществ",
+        "code": "1470"
+      },
+      {
+        "alias": "Профессиональные услуги 1",
+        "code": "8680"
+      },
+      {
+        "alias": "Профессиональные услуги 2",
+        "code": "8760"
+      },
+      {
+        "alias": "Профессиональные услуги 3",
+        "code": "8820"
+      },
+      {
+        "alias": "Прочее 2",
+        "code": "1170"
+      },
+      {
+        "alias": "Прочие Здания и сооружения",
+        "code": "2613"
+      },
+      {
+        "alias": "Прочие здания 1",
+        "code": "1490"
+      },
+      {
+        "alias": "Прочие здания 2",
+        "code": "2590"
+      },
+      {
+        "alias": "Прочие расходы Заказчика",
+        "code": "9800"
+      },
+      {
+        "alias": "Прочие реагенты",
+        "code": "3850"
+      },
+      {
+        "alias": "Прочие реагенты - Линия 1",
+        "code": "3851"
+      },
+      {
+        "alias": "Прочие реагенты - Линия 2",
+        "code": "3855"
+      },
+      {
+        "alias": "Пункт взвешивания на КПП",
+        "code": "2572"
+      },
+      {
+        "alias": "Пусконаладочные работы и выход на проектный режим",
+        "code": "9500"
+      },
+      {
+        "alias": "Пусконаладочные работы и поддержка выхода на проектный режим",
+        "code": "8140"
+      },
+      {
+        "alias": "Работы по откатке",
+        "code": "1120"
+      },
+      {
+        "alias": "Разведка и бурение",
+        "code": "8700"
+      },
+      {
+        "alias": "Раздевалка 1",
+        "code": "2516"
+      },
+      {
+        "alias": "Раздевалка 2",
+        "code": "2732"
+      },
+      {
+        "alias": "Раздевалка 3",
+        "code": "1417"
+      },
+      {
+        "alias": "Разработка дамбы выше хвостохранилища",
+        "code": "5440"
+      },
+      {
+        "alias": "Разработка низовой дамбы хвостохранилища",
+        "code": "5140"
+      },
+      {
+        "alias": "Разрешения, лицензии и приобретение юридического права разведывать и добывать обнаруженные полезные ископаемые",
+        "code": "9200"
+      },
+      {
+        "alias": "Распределение сырой воды на площадке",
+        "code": "2400"
+      },
+      {
+        "alias": "Расходы Заказчика",
+        "code": "9000"
+      },
+      {
+        "alias": "Расходы по площадке",
+        "code": "9820"
+      },
+      {
+        "alias": "Рации 2",
+        "code": "9826"
+      },
+      {
+        "alias": "Рации 3",
+        "code": "2860"
+      },
+      {
+        "alias": "Реагенты",
+        "code": "3800"
+      },
+      {
+        "alias": "Реагенты для коллективной флотации",
+        "code": "3810"
+      },
+      {
+        "alias": "Реагенты для коллективной флотации - Линия 1",
+        "code": "3811"
+      },
+      {
+        "alias": "Реагенты для коллективной флотации - Линия 2",
+        "code": "3815"
+      },
+      {
+        "alias": "Реагенты для флокулянта",
+        "code": "3820"
+      },
+      {
+        "alias": "Реагенты для флокулянта - Линия 1",
+        "code": "3821"
+      },
+      {
+        "alias": "Реагенты для флокулянта - Линия 2",
+        "code": "3825"
+      },
+      {
+        "alias": "Реагенты для флотации молибдена",
+        "code": "3830"
+      },
+      {
+        "alias": "Реагенты для флотации молибдена - Линия 1",
+        "code": "3831"
+      },
+      {
+        "alias": "Реагенты для флотации молибдена - Линия 2",
+        "code": "3835"
+      },
+      {
+        "alias": "Регенерация воды",
+        "code": "5300"
+      },
+      {
+        "alias": "Резерв Заказчика",
+        "code": "9940"
+      },
+      {
+        "alias": "Резервуары хранения топлива и система насосной перекачки топлива комплекса обслуживания горной техники",
+        "code": "1431"
+      },
+      {
+        "alias": "Рост",
+        "code": "9930"
+      },
+      {
+        "alias": "Сбор и хранение ливневых стоков",
+        "code": "2130"
+      },
+      {
+        "alias": "Сбор инфильтрата",
+        "code": "5220"
+      },
+      {
+        "alias": "Сборы и пошлины",
+        "code": "8460"
+      },
+      {
+        "alias": "Сгущение коллективного концентрата",
+        "code": "3410"
+      },
+      {
+        "alias": "Сгущение коллективного концентрата - Линия 1",
+        "code": "3411"
+      },
+      {
+        "alias": "Сгущение коллективного концентрата - Линия 2",
+        "code": "3415"
+      },
+      {
+        "alias": "Сгущение медного концентрата",
+        "code": "3420"
+      },
+      {
+        "alias": "Сгущение медного концентрата - Линия 1",
+        "code": "3421"
+      },
+      {
+        "alias": "Сгущение медного концентрата - Линия 2",
+        "code": "3425"
+      },
+      {
+        "alias": "Сгущение хвостов - Линия 1",
+        "code": "3611"
+      },
+      {
+        "alias": "Сгущение хвостов - Линия 2",
+        "code": "3615"
+      },
+      {
+        "alias": "Сгущение хвостов 1",
+        "code": "3600"
+      },
+      {
+        "alias": "Сгущение хвостов 2",
+        "code": "3610"
+      },
+      {
+        "alias": "Система ОВКВ",
+        "code": "3920"
+      },
+      {
+        "alias": "Система ОВКВ - Линия 1",
+        "code": "3921"
+      },
+      {
+        "alias": "Система ОВКВ - Линия 2",
+        "code": "3925"
+      },
+      {
+        "alias": "Система загрузки шаров - Линия 1",
+        "code": "3222"
+      },
+      {
+        "alias": "Система загрузки шаров - Линия 2",
+        "code": "3226"
+      },
+      {
+        "alias": "Система конвейерной транспортировки крупнодробленной руды - Линия 1",
+        "code": "3121"
+      },
+      {
+        "alias": "Система конвейерной транспортировки крупнодробленной руды - Линия 2",
+        "code": "3125"
+      },
+      {
+        "alias": "Система обнаружения и оповещения о пожаре",
+        "code": "2870"
+      },
+      {
+        "alias": "Система распределения электроэнергии",
+        "code": "2300"
+      },
+      {
+        "alias": "Система управления технологическим процессом",
+        "code": "3930"
+      },
+      {
+        "alias": "Система управления технологическим процессом - Линия 1",
+        "code": "3931"
+      },
+      {
+        "alias": "Система управления технологическим процессом - Линия 2",
+        "code": "3935"
+      },
+      {
+        "alias": "Системы двухсторонней радиосвязи",
+        "code": "1290"
+      },
+      {
+        "alias": "Системы раздачи топлива комплекса обслуживания горной техники",
+        "code": "1432"
+      },
+      {
+        "alias": "Системы связи",
+        "code": "2800"
+      },
+      {
+        "alias": "Системы связи (все компьютеры, сети, телефоны и т.д.)",
+        "code": "9824"
+      },
+      {
+        "alias": "Скважины",
+        "code": "7431"
+      },
+      {
+        "alias": "Склад",
+        "code": "1414"
+      },
+      {
+        "alias": "Склад горючего и система распределения топлива. Участок первичной дробилки",
+        "code": "2780"
+      },
+      {
+        "alias": "Склад горючего и топливораздаточные участки комплекса обслуживания горной техники 1",
+        "code": "2739"
+      },
+      {
+        "alias": "Склад горючего и топливораздаточные участки комплекса обслуживания горной техники 2",
+        "code": "1430"
+      },
+      {
+        "alias": "Склад отходов в Песчанке",
+        "code": "8235"
+      },
+      {
+        "alias": "Склад смазочных материалов",
+        "code": "1580"
+      },
+      {
+        "alias": "Склады временного хранения в Песчанке",
+        "code": "8239"
+      },
+      {
+        "alias": "Снабжение сырой водой",
+        "code": "7400"
+      },
+      {
+        "alias": "Содержание и обслуживание рудника",
+        "code": "1600"
+      },
+      {
+        "alias": "Содержание и обслуживание рудника - накладные расходы",
+        "code": "8830"
+      },
+      {
+        "alias": "Содержание офисов на площадке (обеспечение питания)",
+        "code": "9822"
+      },
+      {
+        "alias": "Соединение с дорогой круглогодичного цикла",
+        "code": "7110"
+      },
+      {
+        "alias": "Составление графиков",
+        "code": "8630"
+      },
+      {
+        "alias": "Специалисты-консультанты",
+        "code": "8150"
+      },
+      {
+        "alias": "Специалисты-консультанты («Флуор» в качестве агентов)",
+        "code": "8152"
+      },
+      {
+        "alias": "Специалисты-консультанты (ГДК)",
+        "code": "8151"
+      },
+      {
+        "alias": "Специальное программное обеспечение (PRISM, Primavera)",
+        "code": "9823"
+      },
+      {
+        "alias": "Специальные услуги на площадке",
+        "code": "8360"
+      },
+      {
+        "alias": "Спутниковая связь",
+        "code": "2850"
+      },
+      {
+        "alias": "Средства малой механизации",
+        "code": "1630"
+      },
+      {
+        "alias": "Стенки",
+        "code": "8662"
+      },
+      {
+        "alias": "Столовая / укрытие / туалеты",
+        "code": "8214"
+      },
+      {
+        "alias": "Стоянки для ТС",
+        "code": "2582"
+      },
+      {
+        "alias": "Страхование",
+        "code": "9750"
+      },
+      {
+        "alias": "Строительная техника (поставляется Заказчиком)",
+        "code": "8260"
+      },
+      {
+        "alias": "Строительные объекты и оборудование",
+        "code": "8200"
+      },
+      {
+        "alias": "Строительные офисы",
+        "code": "8210"
+      },
+      {
+        "alias": "Строительные услуги",
+        "code": "8300"
+      },
+      {
+        "alias": "Строительство автодорог",
+        "code": "1122"
+      },
+      {
+        "alias": "Сушилка молибдена",
+        "code": "3570"
+      },
+      {
+        "alias": "Сырая вода и вода для системы охлаждения",
+        "code": "3730"
+      },
+      {
+        "alias": "Сырая вода и вода для системы охлаждения - Линия 1",
+        "code": "3731"
+      },
+      {
+        "alias": "Сырая вода и вода для системы охлаждения - Линия 2",
+        "code": "3735"
+      },
+      {
+        "alias": "ТС малой грузоподъемности для целей строительства",
+        "code": "8280"
+      },
+      {
+        "alias": "ТС площадки (их закупка и техническое обслуживание)",
+        "code": "9821"
+      },
+      {
+        "alias": "Талик Большой Анюй (будущее)",
+        "code": "7420"
+      },
+      {
+        "alias": "Таможня/ транспортировка/ курьерская доставка/ контроль сроков исполнения заказов",
+        "code": "9854"
+      },
+      {
+        "alias": "Телефон",
+        "code": "2820"
+      },
+      {
+        "alias": "Техника для содержания и обслуживания",
+        "code": "1340"
+      },
+      {
+        "alias": "Техника обогатительной фабрики",
+        "code": "1360"
+      },
+      {
+        "alias": "Техника рудника",
+        "code": "1300"
+      },
+      {
+        "alias": "Технический воздух и воздух КИП",
+        "code": "3750"
+      },
+      {
+        "alias": "Технический воздух и воздух КИП - Линия 1",
+        "code": "3751"
+      },
+      {
+        "alias": "Технический воздух и воздух КИП - Линия 2",
+        "code": "3755"
+      },
+      {
+        "alias": "Технологическая вода",
+        "code": "3710"
+      },
+      {
+        "alias": "Технологическая вода - Линия 1",
+        "code": "3711"
+      },
+      {
+        "alias": "Технологическая вода - Линия 2",
+        "code": "3715"
+      },
+      {
+        "alias": "Технологический воздух",
+        "code": "3760"
+      },
+      {
+        "alias": "Технологический воздух - Линия 1",
+        "code": "3761"
+      },
+      {
+        "alias": "Технологический воздух - Линия 2",
+        "code": "3765"
+      },
+      {
+        "alias": "Топливо",
+        "code": "8341"
+      },
+      {
+        "alias": "Транспортировка и хранение руды",
+        "code": "3100"
+      },
+      {
+        "alias": "Трубопровод инфильтрата",
+        "code": "5240"
+      },
+      {
+        "alias": "Трубопроводы оборотной воды",
+        "code": "5330"
+      },
+      {
+        "alias": "Уклоны",
+        "code": "8661"
+      },
+      {
+        "alias": "Уплотняющая вода",
+        "code": "3740"
+      },
+      {
+        "alias": "Уплотняющая вода - Линия 1",
+        "code": "3741"
+      },
+      {
+        "alias": "Уплотняющая вода - Линия 2",
+        "code": "3745"
+      },
+      {
+        "alias": "Услуги «Флуор»",
+        "code": "8161"
+      },
+      {
+        "alias": "Услуги по перевозке персонала",
+        "code": "8370"
+      },
+      {
+        "alias": "Услуги третьих лиц",
+        "code": "8162"
+      },
+      {
+        "alias": "Установка затаривания в мешки",
+        "code": "3440"
+      },
+      {
+        "alias": "Установка затаривания в мешки - Линия 1",
+        "code": "3441"
+      },
+      {
+        "alias": "Установка затаривания в мешки - Линия 2",
+        "code": "3445"
+      },
+      {
+        "alias": "Утилизация отходов",
+        "code": "1530"
+      },
+      {
+        "alias": "Участковые офисы на строительной площадке",
+        "code": "8213"
+      },
+      {
+        "alias": "Участок дробилки крупного дробления 1",
+        "code": "2111"
+      },
+      {
+        "alias": "Участок дробилки крупного дробления 2",
+        "code": "2141"
+      },
+      {
+        "alias": "Участок конвейера для транспортировки крупнодробленной руды 1",
+        "code": "2142"
+      },
+      {
+        "alias": "Участок конвейера для транспортировки крупнодробленной руды 2",
+        "code": "2112"
+      },
+      {
+        "alias": "Участок склада горючего 1",
+        "code": "2145"
+      },
+      {
+        "alias": "Участок склада горючего 2",
+        "code": "2115"
+      },
+      {
+        "alias": "Участок технологического комплекса 1",
+        "code": "2144"
+      },
+      {
+        "alias": "Участок технологического комплекса 2",
+        "code": "2114"
+      },
+      {
+        "alias": "Участок штабеля крупнодробленной руды 1",
+        "code": "2143"
+      },
+      {
+        "alias": "Участок штабеля крупнодробленной руды 2",
+        "code": "2113"
+      },
+      {
+        "alias": "Фильтрационная система выше хвостохранилища",
+        "code": "5420"
+      },
+      {
+        "alias": "Фильтрация концентрата",
+        "code": "3430"
+      },
+      {
+        "alias": "Фильтрация концентрата - Линия 1",
+        "code": "3431"
+      },
+      {
+        "alias": "Фильтрация концентрата - Линия 2",
+        "code": "3435"
+      },
+      {
+        "alias": "Фильтрация молибдена",
+        "code": "3560"
+      },
+      {
+        "alias": "Флотация",
+        "code": "3300"
+      },
+      {
+        "alias": "Фрахт, пошлины и сборы",
+        "code": "8400"
+      },
+      {
+        "alias": "ХВОСТЫ",
+        "code": "5000"
+      },
+      {
+        "alias": "Хвостохранилище, низовая дамба",
+        "code": "5100"
+      },
+      {
+        "alias": "Хвостохранилище: водоснабжение и водоотведение",
+        "code": "5500"
+      },
+      {
+        "alias": "Хозяйственный режим вахтового поселка и обеспечение питания",
+        "code": "8320"
+      },
+      {
+        "alias": "Холодный склад 1",
+        "code": "1450"
+      },
+      {
+        "alias": "Холодный склад 2",
+        "code": "2520"
+      },
+      {
+        "alias": "Хранение",
+        "code": "2410"
+      },
+      {
+        "alias": "Хранение и отгрузка концентрата молибдена",
+        "code": "3580"
+      },
+      {
+        "alias": "Хранение источников радиоактивного излучения",
+        "code": "2760"
+      },
+      {
+        "alias": "Хранение крупнодробленной руды",
+        "code": "3130"
+      },
+      {
+        "alias": "Хранение крупнодробленной руды - Линия 1",
+        "code": "3131"
+      },
+      {
+        "alias": "Хранение крупнодробленной руды - Линия 2",
+        "code": "3135"
+      },
+      {
+        "alias": "Хранение опасных отходов",
+        "code": "2736"
+      },
+      {
+        "alias": "Центральная отопительная установка",
+        "code": "2770"
+      },
+      {
+        "alias": "Центральная подстанция",
+        "code": "7310"
+      },
+      {
+        "alias": "Цех обслуживания техники большой грузоподъемности и транспортных средств",
+        "code": "1411"
+      },
+      {
+        "alias": "Цех технического обслуживания",
+        "code": "8831"
+      },
+      {
+        "alias": "Цеха техобслуживания транспортных средств малой и (или) средней грузоподъемности",
+        "code": "1412"
+      },
+      {
+        "alias": "Циклоны",
+        "code": "3240"
+      },
+      {
+        "alias": "Циклоны - Линия 1",
+        "code": "3241"
+      },
+      {
+        "alias": "Циклоны - Линия 2",
+        "code": "3245"
+      },
+      {
+        "alias": "Циклоны доизмельчения",
+        "code": "3320"
+      },
+      {
+        "alias": "Циклоны доизмельчения - Линия 1",
+        "code": "3321"
+      },
+      {
+        "alias": "Циклоны доизмельчения - Линия 2",
+        "code": "3325"
+      },
+      {
+        "alias": "Шиномонтаж",
+        "code": "8832"
+      },
+      {
+        "alias": "Шины",
+        "code": "1350"
+      },
+      {
+        "alias": "Шкала надбавок и скидок",
+        "code": "9920"
+      },
+      {
+        "alias": "Штабелеразборочная система крупнодробленной руды",
+        "code": "3140"
+      },
+      {
+        "alias": "Штабелеразборочная система крупнодробленной руды - Линия 1",
+        "code": "3141"
+      },
+      {
+        "alias": "Штабелеразборочная система крупнодробленной руды - Линия 2",
+        "code": "3145"
+      },
+      {
+        "alias": "Экскаваторы 1",
+        "code": "1111"
+      },
+      {
+        "alias": "Экскаваторы 2",
+        "code": "1620"
+      },
+      {
+        "alias": "Эксплуатация горнодобывающих объектов",
+        "code": "1100"
+      },
+      {
+        "alias": "Эксплуатация и обслуживание рудника 1",
+        "code": "2146"
+      },
+      {
+        "alias": "Эксплуатация и обслуживание рудника 2",
+        "code": "2116"
+      },
+      {
+        "alias": "Эксплуатация проектной площадки в Певеке",
+        "code": "8450"
+      },
+      {
+        "alias": "Эксплуатация проектной площадки во Владивостоке",
+        "code": "8440"
+      },
+      {
+        "alias": "Электропитание",
+        "code": "8342"
+      },
+      {
+        "alias": "Электроснабжение",
+        "code": "1570"
+      },
+      {
+        "alias": "Электроснабжение временных зданий и сооружений в Песчанке",
+        "code": "8237"
+      },
+      {
+        "alias": "Электроснабжение и распределение электроэнергии вахтового поселка",
+        "code": "2630"
+      },
+      {
+        "alias": "Электроснабжение и связь",
+        "code": "7300"
+      },
+      {
+        "alias": "Электрощитовая заводоуправления комплекса",
+        "code": "2512"
+      },
+      {
+        "alias": "Электрощитовая комплекса утилизации отходов",
+        "code": "2733"
+      },
+      {
+        "alias": "Электрощитовая эксплуатации и техобслуживания рудника",
+        "code": "1416"
+      },
+      {
+        "alias": "Электрощитовые центральной подстанции",
+        "code": "2310"
+      },
+      {
+        "alias": "темп. Сооружения для первоначальных работ",
+        "code": "8234"
+      },
+      {
+        "alias": "темп. сооружения и вспомогательные инженерные системы",
+        "code": "8230"
+      }
+    ]
+  },
+  "documentTypes": {
+    "codes": [
+      "ASB",
+      "BEV",
+      "BID",
+      "BKD",
+      "BOM",
+      "CAL",
+      "CND",
+      "CON",
+      "COR",
+      "CORF",
+      "CRF",
+      "CRT",
+      "CWA",
+      "CWP",
+      "DCR",
+      "DIA",
+      "DST",
+      "DTL",
+      "EDC",
+      "EDS",
+      "EQL",
+      "ESP",
+      "EST",
+      "FRM",
+      "GAD",
+      "GEN",
+      "HMB",
+      "HTX",
+      "IND",
+      "INV",
+      "IOX",
+      "ISO",
+      "ITP",
+      "JOB",
+      "LNT",
+      "LOG",
+      "LPD",
+      "LST",
+      "LTR",
+      "LYD",
+      "MAN",
+      "MDS",
+      "MOD",
+      "MOM",
+      "MTO",
+      "OTH",
+      "PAS",
+      "PDN",
+      "PDR",
+      "PFD",
+      "PHA",
+      "PHL",
+      "PID",
+      "PLN",
+      "POR",
+      "PRC",
+      "PRE",
+      "RFP",
+      "RFQ",
+      "RIG",
+      "RPT",
+      "SCH",
+      "SCM",
+      "SDD",
+      "SHB",
+      "SHD",
+      "SIM",
+      "SKK",
+      "SLD",
+      "SOS",
+      "SOW",
+      "SPC",
+      "SPL",
+      "SSJ",
+      "STY",
+      "TAS",
+      "TBE",
+      "TDM",
+      "TEM",
+      "TPL",
+      "TQR",
+      "TRN",
+      "WLD",
+      "WRD"
+    ],
+    "aliases_en": [
+      {
+        "alias": "As-built drawings",
+        "code": "ASB"
+      },
+      {
+        "alias": "Bid evaluation",
+        "code": "BEV"
+      },
+      {
+        "alias": "Bid tabulation",
+        "code": "BID"
+      },
+      {
+        "alias": "Bill of materials",
+        "code": "BOM"
+      },
+      {
+        "alias": "Block diagram",
+        "code": "BKD"
+      },
+      {
+        "alias": "Calculation",
+        "code": "CAL"
+      },
+      {
+        "alias": "Certificate",
+        "code": "CRT"
+      },
+      {
+        "alias": "Change order",
+        "code": "COR"
+      },
+      {
+        "alias": "Change order request form",
+        "code": "CORF"
+      },
+      {
+        "alias": "Confirmed Contract",
+        "code": "CON"
+      },
+      {
+        "alias": "Connection diagram",
+        "code": "CND"
+      },
+      {
+        "alias": "Construction work area",
+        "code": "CWA"
+      },
+      {
+        "alias": "Construction work package",
+        "code": "CWP"
+      },
+      {
+        "alias": "Contract request form",
+        "code": "CRF"
+      },
+      {
+        "alias": "Data sheet",
+        "code": "DST"
+      },
+      {
+        "alias": "Declarations of Conformity",
+        "code": "DCR"
+      },
+      {
+        "alias": "Detailed drawing",
+        "code": "DTL"
+      },
+      {
+        "alias": "Diagram",
+        "code": "DIA"
+      },
+      {
+        "alias": "Engineering design criteria",
+        "code": "EDC"
+      },
+      {
+        "alias": "Equipment data sheet",
+        "code": "EDS"
+      },
+      {
+        "alias": "Equipment list",
+        "code": "EQL"
+      },
+      {
+        "alias": "Equipment specification",
+        "code": "ESP"
+      },
+      {
+        "alias": "Estimate",
+        "code": "EST"
+      },
+      {
+        "alias": "General arrangement drawing",
+        "code": "GAD"
+      },
+      {
+        "alias": "General document",
+        "code": "GEN"
+      },
+      {
+        "alias": "Heat and/or material balance",
+        "code": "HMB"
+      },
+      {
+        "alias": "Heat tracing",
+        "code": "HTX"
+      },
+      {
+        "alias": "I/O segment drawing",
+        "code": "IOX"
+      },
+      {
+        "alias": "Index drawing",
+        "code": "IND"
+      },
+      {
+        "alias": "Inspection and test plan",
+        "code": "ITP"
+      },
+      {
+        "alias": "Invoice",
+        "code": "INV"
+      },
+      {
+        "alias": "Isometric",
+        "code": "ISO"
+      },
+      {
+        "alias": "Job bulletin",
+        "code": "JOB"
+      },
+      {
+        "alias": "Layout drawing",
+        "code": "LYD"
+      },
+      {
+        "alias": "Letter",
+        "code": "LTR"
+      },
+      {
+        "alias": "Line list",
+        "code": "LNT"
+      },
+      {
+        "alias": "List",
+        "code": "LST"
+      },
+      {
+        "alias": "Log",
+        "code": "LOG"
+      },
+      {
+        "alias": "Loop diagram",
+        "code": "LPD"
+      },
+      {
+        "alias": "Manual",
+        "code": "MAN"
+      },
+      {
+        "alias": "Material data sheet",
+        "code": "MDS"
+      },
+      {
+        "alias": "Material take-off",
+        "code": "MTO"
+      },
+      {
+        "alias": "Minutes of meeting",
+        "code": "MOM"
+      },
+      {
+        "alias": "Model",
+        "code": "MOD"
+      },
+      {
+        "alias": "Other document",
+        "code": "OTH"
+      },
+      {
+        "alias": "Philosophy",
+        "code": "PHL"
+      },
+      {
+        "alias": "Piping and instrumentation diagram",
+        "code": "PID"
+      },
+      {
+        "alias": "Plot plan or site plan",
+        "code": "PLN"
+      },
+      {
+        "alias": "Potential deviation notices (PDNs)",
+        "code": "PDN"
+      },
+      {
+        "alias": "Procedure",
+        "code": "PRC"
+      },
+      {
+        "alias": "Procedure deviation request",
+        "code": "PDR"
+      },
+      {
+        "alias": "Process flow diagram",
+        "code": "PFD"
+      },
+      {
+        "alias": "Process hazard analysis",
+        "code": "PHA"
+      },
+      {
+        "alias": "Project, Overtime, Travel Authorization request form",
+        "code": "FRM"
+      },
+      {
+        "alias": "Purchase order",
+        "code": "POR"
+      },
+      {
+        "alias": "Purchase request",
+        "code": "PRE"
+      },
+      {
+        "alias": "Report",
+        "code": "RPT"
+      },
+      {
+        "alias": "Request for proposal",
+        "code": "RFP"
+      },
+      {
+        "alias": "Request for quotation",
+        "code": "RFQ"
+      },
+      {
+        "alias": "Rigging study",
+        "code": "RIG"
+      },
+      {
+        "alias": "Schedule",
+        "code": "SCH"
+      },
+      {
+        "alias": "Schematic",
+        "code": "SCM"
+      },
+      {
+        "alias": "Scope of services",
+        "code": "SOS"
+      },
+      {
+        "alias": "Scope of work (Schedule B1)",
+        "code": "SOW"
+      },
+      {
+        "alias": "Shop drawing",
+        "code": "SHD"
+      },
+      {
+        "alias": "Simulation",
+        "code": "SIM"
+      },
+      {
+        "alias": "Single line diagram",
+        "code": "SLD"
+      },
+      {
+        "alias": "Single/sole source justification form",
+        "code": "SSJ"
+      },
+      {
+        "alias": "Sketch",
+        "code": "SKK"
+      },
+      {
+        "alias": "Spare parts list",
+        "code": "SPL"
+      },
+      {
+        "alias": "Specification",
+        "code": "SPC"
+      },
+      {
+        "alias": "Standard drawing",
+        "code": "SDD"
+      },
+      {
+        "alias": "Study",
+        "code": "STY"
+      },
+      {
+        "alias": "Technical Request",
+        "code": "TQR"
+      },
+      {
+        "alias": "Technical assignment",
+        "code": "TAS"
+      },
+      {
+        "alias": "Technical assignment (Schedule B1)",
+        "code": "SHB"
+      },
+      {
+        "alias": "Technical bid evaluation",
+        "code": "TBE"
+      },
+      {
+        "alias": "Technical decision memorandum",
+        "code": "TDM"
+      },
+      {
+        "alias": "Technical passport (Equipment passport)",
+        "code": "PAS"
+      },
+      {
+        "alias": "Template",
+        "code": "TEM"
+      },
+      {
+        "alias": "Test plan",
+        "code": "TPL"
+      },
+      {
+        "alias": "Transmittal",
+        "code": "TRN"
+      },
+      {
+        "alias": "Welding documents",
+        "code": "WLD"
+      },
+      {
+        "alias": "Wiring diagram",
+        "code": "WRD"
+      }
+    ],
+    "aliases_ru": [
+      {
+        "alias": "Анализ опасностей технологического процесса",
+        "code": "PHA"
+      },
+      {
+        "alias": "Блок-схема",
+        "code": "BKD"
+      },
+      {
+        "alias": "Ведомость материалов",
+        "code": "BOM"
+      },
+      {
+        "alias": "Выборка материалов",
+        "code": "MTO"
+      },
+      {
+        "alias": "График",
+        "code": "SCH"
+      },
+      {
+        "alias": "Декларация о соответствии",
+        "code": "DCR"
+      },
+      {
+        "alias": "Детальный чертеж (Рабочий чертеж)",
+        "code": "DTL"
+      },
+      {
+        "alias": "Договор на поставку",
+        "code": "POR"
+      },
+      {
+        "alias": "Документы по сварке",
+        "code": "WLD"
+      },
+      {
+        "alias": "Доп. соглашение",
+        "code": "COR"
+      },
+      {
+        "alias": "Другой документ",
+        "code": "OTH"
+      },
+      {
+        "alias": "Журнал",
+        "code": "LOG"
+      },
+      {
+        "alias": "Запрос ТКП",
+        "code": "RFP"
+      },
+      {
+        "alias": "Запрос на отклонение от процедуры",
+        "code": "PDR"
+      },
+      {
+        "alias": "Запрос цены",
+        "code": "RFQ"
+      },
+      {
+        "alias": "Заявка на закупку",
+        "code": "PRE"
+      },
+      {
+        "alias": "Заявка на подготовку договора",
+        "code": "CRF"
+      },
+      {
+        "alias": "Заявка на подготовку доп. соглашения",
+        "code": "CORF"
+      },
+      {
+        "alias": "Изометрический",
+        "code": "ISO"
+      },
+      {
+        "alias": "Инструкция 1",
+        "code": "JOB"
+      },
+      {
+        "alias": "Инструкция 2",
+        "code": "MAN"
+      },
+      {
+        "alias": "Исполнительные чертежи",
+        "code": "ASB"
+      },
+      {
+        "alias": "Компоновочный чертеж",
+        "code": "LYD"
+      },
+      {
+        "alias": "Контурная схема",
+        "code": "LPD"
+      },
+      {
+        "alias": "Критерии технического проектирования",
+        "code": "EDC"
+      },
+      {
+        "alias": "Лист данных",
+        "code": "DST"
+      },
+      {
+        "alias": "Лист данных на материал",
+        "code": "MDS"
+      },
+      {
+        "alias": "Лист данных оборудования",
+        "code": "EDS"
+      },
+      {
+        "alias": "Меморандум о технических решениях",
+        "code": "TDM"
+      },
+      {
+        "alias": "Моделирование",
+        "code": "SIM"
+      },
+      {
+        "alias": "Модель",
+        "code": "MOD"
+      },
+      {
+        "alias": "Область строительных работ",
+        "code": "CWA"
+      },
+      {
+        "alias": "Обоснование",
+        "code": "STY"
+      },
+      {
+        "alias": "Обоснование такелажных работ",
+        "code": "RIG"
+      },
+      {
+        "alias": "Общий документ",
+        "code": "GEN"
+      },
+      {
+        "alias": "Общий компоновочный чертеж (Чертеж общего вида)",
+        "code": "GAD"
+      },
+      {
+        "alias": "Объем работ (Раздел В1)",
+        "code": "SOW"
+      },
+      {
+        "alias": "Объем услуг",
+        "code": "SOS"
+      },
+      {
+        "alias": "Однолинейная схема",
+        "code": "SLD"
+      },
+      {
+        "alias": "Отчет",
+        "code": "RPT"
+      },
+      {
+        "alias": "Оценка тендерных предложений",
+        "code": "BEV"
+      },
+      {
+        "alias": "Пакет строительных работ",
+        "code": "CWP"
+      },
+      {
+        "alias": "Перечень",
+        "code": "LST"
+      },
+      {
+        "alias": "Перечень запасных частей",
+        "code": "SPL"
+      },
+      {
+        "alias": "Перечень линий",
+        "code": "LNT"
+      },
+      {
+        "alias": "Перечень оборудования",
+        "code": "EQL"
+      },
+      {
+        "alias": "Письмо",
+        "code": "LTR"
+      },
+      {
+        "alias": "План инспекций и испытаний",
+        "code": "ITP"
+      },
+      {
+        "alias": "План испытаний",
+        "code": "TPL"
+      },
+      {
+        "alias": "План участка или план площадки",
+        "code": "PLN"
+      },
+      {
+        "alias": "Принципиальная электрическая схема",
+        "code": "WRD"
+      },
+      {
+        "alias": "Принципы и подходы",
+        "code": "PHL"
+      },
+      {
+        "alias": "Протокол совещания",
+        "code": "MOM"
+      },
+      {
+        "alias": "Процедура, политика",
+        "code": "PRC"
+      },
+      {
+        "alias": "Расчет",
+        "code": "CAL"
+      },
+      {
+        "alias": "Сводная таблица оценки тендерных предложений",
+        "code": "BID"
+      },
+      {
+        "alias": "Сертификат",
+        "code": "CRT"
+      },
+      {
+        "alias": "Смета",
+        "code": "EST"
+      },
+      {
+        "alias": "Согласованный договор",
+        "code": "CON"
+      },
+      {
+        "alias": "Сопроводительная ведомость (Трансмиттал)",
+        "code": "TRN"
+      },
+      {
+        "alias": "Спецификация",
+        "code": "SPC"
+      },
+      {
+        "alias": "Спецификация оборудования",
+        "code": "ESP"
+      },
+      {
+        "alias": "Стандартный чертеж (Альбом типовых чертежей)",
+        "code": "SDD"
+      },
+      {
+        "alias": "Схема",
+        "code": "DIA"
+      },
+      {
+        "alias": "Схема подключения",
+        "code": "CND"
+      },
+      {
+        "alias": "Схема трубопроводов и контрольно-измерительных приборов",
+        "code": "PID"
+      },
+      {
+        "alias": "Схематический",
+        "code": "SCM"
+      },
+      {
+        "alias": "Счет",
+        "code": "INV"
+      },
+      {
+        "alias": "Тепловой и материальный баланс",
+        "code": "HMB"
+      },
+      {
+        "alias": "Тепловые спутники",
+        "code": "HTX"
+      },
+      {
+        "alias": "Техническая оценка тендерных предложений",
+        "code": "TBE"
+      },
+      {
+        "alias": "Технический запрос",
+        "code": "TQR"
+      },
+      {
+        "alias": "Технический паспорт",
+        "code": "PAS"
+      },
+      {
+        "alias": "Техническое задание",
+        "code": "TAS"
+      },
+      {
+        "alias": "Техническое задание (Раздел В1)",
+        "code": "SHB"
+      },
+      {
+        "alias": "Технологическая схема",
+        "code": "PFD"
+      },
+      {
+        "alias": "Уведомления о потенциальных отклонениях",
+        "code": "PDN"
+      },
+      {
+        "alias": "Форма заявки на проектные работы, на сверхурочную работу, на командировку",
+        "code": "FRM"
+      },
+      {
+        "alias": "Форма обоснования закупки из одного/единственного источника",
+        "code": "SSJ"
+      },
+      {
+        "alias": "Чертеж сегмента ввода-вывода",
+        "code": "IOX"
+      },
+      {
+        "alias": "Чертеж-указатель",
+        "code": "IND"
+      },
+      {
+        "alias": "Чертежи КМД, чертежи изделий",
+        "code": "SHD"
+      },
+      {
+        "alias": "Шаблон",
+        "code": "TEM"
+      },
+      {
+        "alias": "Эскиз",
+        "code": "SKK"
+      }
+    ]
+  },
+  "disciplines": {
+    "codes": [
+      "100",
+      "103",
+      "107",
+      "200",
+      "201",
+      "202",
+      "206",
+      "210",
+      "212",
+      "214",
+      "215",
+      "220",
+      "225",
+      "235",
+      "240",
+      "250",
+      "255",
+      "259",
+      "265",
+      "270",
+      "280",
+      "281",
+      "282",
+      "283",
+      "284",
+      "285",
+      "286",
+      "300",
+      "310",
+      "320",
+      "340",
+      "350",
+      "400",
+      "42",
+      "430",
+      "500",
+      "653",
+      "655",
+      "700",
+      "800",
+      "901",
+      "999"
+    ],
+    "aliases_en": [
+      {
+        "alias": "Administration",
+        "code": "103"
+      },
+      {
+        "alias": "Architectural",
+        "code": "220"
+      },
+      {
+        "alias": "Auxiliary structures and devices",
+        "code": "284"
+      },
+      {
+        "alias": "Bridge deck, expansion joints, bearing",
+        "code": "280"
+      },
+      {
+        "alias": "Bridge span",
+        "code": "283"
+      },
+      {
+        "alias": "Business Services",
+        "code": "340"
+      },
+      {
+        "alias": "Civil works",
+        "code": "210"
+      },
+      {
+        "alias": "Connections with approach embankments, reinforcements, regulating structures",
+        "code": "285"
+      },
+      {
+        "alias": "Construction",
+        "code": "500"
+      },
+      {
+        "alias": "Contract management",
+        "code": "430"
+      },
+      {
+        "alias": "Design documentation",
+        "code": "202"
+      },
+      {
+        "alias": "Document and data management",
+        "code": "206"
+      },
+      {
+        "alias": "Drainage and sewage facilities",
+        "code": "281"
+      },
+      {
+        "alias": "Electrical",
+        "code": "265"
+      },
+      {
+        "alias": "Engineering management",
+        "code": "200"
+      },
+      {
+        "alias": "Engineering surveys",
+        "code": "201"
+      },
+      {
+        "alias": "Estimating",
+        "code": "310"
+      },
+      {
+        "alias": "Fire protection (Instrument and piping)",
+        "code": "653"
+      },
+      {
+        "alias": "HVAC (mechanical services, including HVAC, dust control)",
+        "code": "235"
+      },
+      {
+        "alias": "Health, Safety and Environmental (HSE), and Security",
+        "code": "655"
+      },
+      {
+        "alias": "Information management",
+        "code": "107"
+      },
+      {
+        "alias": "Instrumentation and control systems",
+        "code": "270"
+      },
+      {
+        "alias": "Logistics",
+        "code": "350"
+      },
+      {
+        "alias": "Material handling",
+        "code": "259"
+      },
+      {
+        "alias": "Mechanical",
+        "code": "255"
+      },
+      {
+        "alias": "Mining",
+        "code": "700"
+      },
+      {
+        "alias": "Operation",
+        "code": "800"
+      },
+      {
+        "alias": "Piping plant design",
+        "code": "250"
+      },
+      {
+        "alias": "Plumbing",
+        "code": "240"
+      },
+      {
+        "alias": "Pre-Commissioning",
+        "code": "901"
+      },
+      {
+        "alias": "Process",
+        "code": "225"
+      },
+      {
+        "alias": "Procurement",
+        "code": "400"
+      },
+      {
+        "alias": "Project controls",
+        "code": "300"
+      },
+      {
+        "alias": "Project management",
+        "code": "100"
+      },
+      {
+        "alias": "Quality assurance",
+        "code": "42"
+      },
+      {
+        "alias": "Risk management",
+        "code": "999"
+      },
+      {
+        "alias": "Road traffic management",
+        "code": "286"
+      },
+      {
+        "alias": "Roads",
+        "code": "212"
+      },
+      {
+        "alias": "Scheduling",
+        "code": "320"
+      },
+      {
+        "alias": "Structural Concrete",
+        "code": "214"
+      },
+      {
+        "alias": "Structural Steel",
+        "code": "215"
+      },
+      {
+        "alias": "Supports",
+        "code": "282"
+      }
+    ],
+    "aliases_ru": [
+      {
+        "alias": "Автомобильная дорога",
+        "code": "212"
+      },
+      {
+        "alias": "Администрация",
+        "code": "103"
+      },
+      {
+        "alias": "Архитектурные работы",
+        "code": "220"
+      },
+      {
+        "alias": "Водоотвод и очистные сооружения",
+        "code": "281"
+      },
+      {
+        "alias": "Водопроводно-канализационная сеть",
+        "code": "240"
+      },
+      {
+        "alias": "Горные работы",
+        "code": "700"
+      },
+      {
+        "alias": "Закупки",
+        "code": "400"
+      },
+      {
+        "alias": "Инженерные изыскания",
+        "code": "201"
+      },
+      {
+        "alias": "Коммерческие услуги",
+        "code": "340"
+      },
+      {
+        "alias": "Конструкции железобетонные",
+        "code": "214"
+      },
+      {
+        "alias": "Конструкции металлические",
+        "code": "215"
+      },
+      {
+        "alias": "Контрольно-измерительные системы",
+        "code": "270"
+      },
+      {
+        "alias": "Логистика",
+        "code": "350"
+      },
+      {
+        "alias": "Мех-ремонтные работы",
+        "code": "255"
+      },
+      {
+        "alias": "Мостовое полотно, деформационные швы, опорные части",
+        "code": "280"
+      },
+      {
+        "alias": "ОВКВ (техническое обслуживание, включая ОВКВ, контроль запыленности)",
+        "code": "235"
+      },
+      {
+        "alias": "Обеспечение качества",
+        "code": "42"
+      },
+      {
+        "alias": "Общестроительные работы",
+        "code": "210"
+      },
+      {
+        "alias": "Опоры",
+        "code": "282"
+      },
+      {
+        "alias": "Организация дорожного движения",
+        "code": "286"
+      },
+      {
+        "alias": "Охрана труда, техника безопасности и охрана окружающей среды, и СБ",
+        "code": "655"
+      },
+      {
+        "alias": "Погрузочно-разгрузочные работы",
+        "code": "259"
+      },
+      {
+        "alias": "Предварительные пусконаладочные работы",
+        "code": "901"
+      },
+      {
+        "alias": "Проектирование трубопроводов",
+        "code": "250"
+      },
+      {
+        "alias": "Проектная документация",
+        "code": "202"
+      },
+      {
+        "alias": "Пролётные строения",
+        "code": "283"
+      },
+      {
+        "alias": "Противопожарная защита (КИП и трубопроводы)",
+        "code": "653"
+      },
+      {
+        "alias": "Руководство проектом",
+        "code": "300"
+      },
+      {
+        "alias": "Сопровождение контрактов",
+        "code": "430"
+      },
+      {
+        "alias": "Сопряжения с насыпями подходов, укрепления, регуляционные сооружения",
+        "code": "285"
+      },
+      {
+        "alias": "Составление графиков",
+        "code": "320"
+      },
+      {
+        "alias": "Составление смет",
+        "code": "310"
+      },
+      {
+        "alias": "Специальные вспомогательные сооружения и устройства",
+        "code": "284"
+      },
+      {
+        "alias": "Строительство",
+        "code": "500"
+      },
+      {
+        "alias": "Техническое руководство",
+        "code": "200"
+      },
+      {
+        "alias": "Технологические процессы",
+        "code": "225"
+      },
+      {
+        "alias": "Управление документами и данными",
+        "code": "206"
+      },
+      {
+        "alias": "Управление информацией",
+        "code": "107"
+      },
+      {
+        "alias": "Управление проектом",
+        "code": "100"
+      },
+      {
+        "alias": "Управление рисками",
+        "code": "999"
+      },
+      {
+        "alias": "Эксплуатация",
+        "code": "800"
+      },
+      {
+        "alias": "Электромонтажные работы",
+        "code": "265"
+      }
+    ]
+  }
+}

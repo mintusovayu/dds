@@ -1,0 +1,327 @@
+# =====================================================================
+# Deep Doc Search — CI-job smoke-тестов (Playwright).
+#
+# Назначение:
+#   Проверка работоспособности UI после каждого изменения в коде.
+#   Smoke-тесты запускают реальное приложение DDS (через run.py),
+#   эмулируют ключевые пользовательские сценарии в headless Chromium
+#   и проверяют результат в DOM и на скриншотах.
+#
+# Покрываемые сценарии (см. tests/smoke/test_smoke_playwright.py):
+#   1. Загрузка главной страницы после логина.
+#   2. Отображение формы поиска и результатов.
+#   3. Поиск с пустым запросом (режим «показать все»).
+#   4. Открытие вкладки документа по правому клику.
+#   5. Переключение режима «Рендер / Текст» на вкладке документа.
+#   6. Отображение подсветки совпадений (бирюзовые боксы).
+#   7. Открытие панели настроек.
+#   8. Смена темы оформления.
+#   9. Проверка статус-бара (запрос, фильтры, счётчик документов).
+#
+# Что НЕ покрывает этот job:
+#   - Полноценное тестирование сканирования (1000 PDF) —
+#     слишком долго для smoke; покрывается bench-slow.yml.
+#   - Нагрузочное тестирование — вне области smoke.
+#
+# Отношение к branch protection (см. Фазу 0 плана рефакторинга):
+#   ⚠  Этот workflow НЕ должен быть отмечен как required check
+#      в настройках branch protection. Smoke-тесты могут быть
+#      нестабильны (браузерные race conditions, тайминги анимаций);
+#      их падение даёт обратную связь, но не блокирует merge.
+#      Такой режим согласован с критериями Фазы 0:
+#      «Smoke-тесты Playwright зелёные» — метрика успеха фазы,
+#      а не блокирующее условие PR.
+#
+# Архитектура запуска:
+#   1. pytest собирает тесты из tests/smoke/.
+#   2. Session-scoped fixture в tests/smoke/conftest.py:
+#      - создаёт временный рабочий каталог с изолированными:
+#          • db_path (SQLite),
+#          • rd_directory (пустой, для smoke),
+#          • reference_data_path (минимальный JSON),
+#          • config.smoke.json;
+#      - запускает python run.py --config <smoke-config> как
+#        subprocess на порту 8765 (изолированный от других сервисов);
+#      - ждёт readiness через polling /api/scan/status
+#        (таймаут 60 секунд);
+#      - по завершении теста — terminate subprocess и cleanup.
+#   3. Тесты Playwright используют базовый URL http://localhost:8765.
+#   4. Playwright работает в headless Chromium.
+#
+# Retry × 2 при нестабильности:
+#   Smoke-тесты UI подвержены флаки-эффектам (тайминги DOM,
+#   анимации CSS, задержки fetch). Применяется action
+#   nick-invision/retry@v3: до 3 попыток (1 + 2 retry) с
+#   паузой 10 секунд между попытками. Это стандартная практика
+#   для браузерных тестов; retry не маскирует реальные баги
+#   (три провала подряд — реальная проблема, а не флак).
+#
+# Артефакты при падении:
+#   - tests/smoke/artifacts/ — screenshots и video (Playwright).
+#   - tests/smoke/app.log — лог приложения DDS (stdout + stderr).
+#   - dds.log — лог приложения через RotatingFileHandler.
+#   Artifacts сохраняются при любом исходе (if: always()).
+#
+# Триггеры:
+#   - pull_request → main: при изменении релевантных путей.
+#   - push → main: проверка на актуальной ветке.
+#   - workflow_dispatch: ручной запуск.
+#
+# Concurrency:
+#   Отменяет предыдущие запуски на той же ветке/PR. Smoke-тесты
+#   поднимают uvicorn, конкуренция за порт 8765 нежелательна.
+#
+# Совместимость:
+#   - runner: ubuntu-latest (smoke-тесты не чувствительны к железу,
+#     в отличие от bench; не нужен self-hosted dds-bench).
+#   - Python 3.12 (см. docs/deployment.md).
+#   - Playwright >= 1.40 (см. requirements-dev.txt).
+# =====================================================================
+
+name: Smoke Tests
+
+# =====================================================================
+# Триггеры запуска
+# =====================================================================
+on:
+  # При изменении ядра, веб-слоя, smoke-тестов, точки входа или
+  # зависимостей. Изменения только в docs/, README не триггерят.
+  pull_request:
+    branches: [main]
+    paths:
+      - 'dds_core/**'
+      - 'dds_web/**'
+      - 'tests/smoke/**'
+      - 'run.py'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
+      - '.github/workflows/smoke.yml'
+
+  # Проверка после merge: гарантирует работоспособность main.
+  push:
+    branches: [main]
+    paths:
+      - 'dds_core/**'
+      - 'dds_web/**'
+      - 'tests/smoke/**'
+      - 'run.py'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
+      - '.github/workflows/smoke.yml'
+
+  # Ручной запуск (диагностика, повторный прогон после падения).
+  workflow_dispatch:
+
+# =====================================================================
+# Concurrency: отмена предыдущих запусков на той же ветке/PR.
+#
+# Smoke-тесты поднимают uvicorn на фиксированном порту 8765.
+# Параллельные запуски на одном runner'е конфликтуют за порт
+# (OSError: address already in use). Concurrency с cancel-in-progress
+# предотвращает эту ситуацию.
+# =====================================================================
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+# =====================================================================
+# Permissions: минимально необходимые.
+#
+# contents: read — для checkout.
+# Публикация комментариев к PR не выполняется: отчёт доступен
+# через Step Summary и artifact.
+# =====================================================================
+permissions:
+  contents: read
+
+# =====================================================================
+# Переменные окружения, общие для всех шагов.
+# =====================================================================
+env:
+  # Python-версия соответствует docs/deployment.md.
+  PYTHON_VERSION: '3.12'
+
+  # Отключает периодическую проверку новых версий pip в stdout.
+  PIP_DISABLE_PIP_VERSION_CHECK: '1'
+
+  # Отключает создание .pyc-файлов: не критично для smoke,
+  # но снижает шум в файловой системе.
+  PYTHONDONTWRITEBYTECODE: '1'
+
+  # Порт для тестового приложения. Изолирован от 8000 (production),
+  # чтобы избежать конфликта с уже запущенным сервисом на runner'е.
+  DDS_SMOKE_PORT: '8765'
+
+  # Базовый URL для Playwright.
+  DDS_SMOKE_BASE_URL: 'http://127.0.0.1:8765'
+
+  # Таймаут ожидания readiness приложения (в секундах).
+  # Учитывает холодный старт: импорт PyMuPDF, инициализация БД,
+  # запуск forkserver, регистрация middleware.
+  DDS_SMOKE_READY_TIMEOUT: '60'
+
+  # Уровень логирования приложения для smoke-тестов.
+  # INFO даёт достаточно деталей при расследовании падений.
+  DDS_LOG_LEVEL: 'INFO'
+
+jobs:
+  # -------------------------------------------------------------------
+  # Job: smoke
+  #
+  # Единственный job в workflow. Все шаги линейны.
+  # -------------------------------------------------------------------
+  smoke:
+    name: Smoke tests (Playwright, headless Chromium)
+
+    # ubuntu-latest достаточен для smoke: тесты проверяют
+    # функциональность, а не производительность.
+    runs-on: ubuntu-latest
+
+    # Верхняя граница: install (~2 мин) + 3 попытки × ~3 мин
+    # + artifacts. Реалистично 8–12 минут; 25 минут — страховка
+    # от затянувшегося install playwright или зависшего uvicorn.
+    timeout-minutes: 25
+
+    steps:
+      # ---------------------------------------------------------------
+      # 1. Checkout
+      # ---------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # ---------------------------------------------------------------
+      # 2. Setup Python + кэш pip
+      # ---------------------------------------------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      # ---------------------------------------------------------------
+      # 3. Установка зависимостей
+      #
+      # Полная установка (runtime + dev): включает playwright,
+      # pytest, pytest-asyncio и др.
+      # ---------------------------------------------------------------
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      # ---------------------------------------------------------------
+      # 4. Установка Chromium для Playwright
+      #
+      # Флаг --with-deps устанавливает системные библиотеки
+      # (libnss3, libatk-bridge2.0-0, libgbm1 и др.), необходимые
+      # Chromium на ubuntu-latest. Без них браузер не запустится.
+      #
+      # Кэш ~/.cache/ms-playwright сохраняется между запусками
+      # через actions/cache: бинарник Chromium (~150 МБ) скачивается
+      # один раз, при повторных запусках берётся из кэша.
+      # ---------------------------------------------------------------
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright Chromium
+        run: |
+          python -m playwright install --with-deps chromium
+
+      # ---------------------------------------------------------------
+      # 5. Прогон smoke-тестов с retry × 2
+      #
+      # nick-invision/retry@v3:
+      #   - max_attempts: 3 (1 попытка + 2 retry).
+      #   - retry_on: error (retry при любом non-zero exit).
+      #   - timeout_minutes: 10 на попытку.
+      #   - retry_wait_seconds: 10 (пауза между попытками).
+      #
+      # При первом успехе — остальные попытки не выполняются.
+      #
+      # pytest-флаги:
+      #   -v                     — verbose-вывод (видно каждый тест).
+      #   -ra                    — summary для skipped/failed/xfailed.
+      #   --strict-markers       — неизвестный маркер = ошибка.
+      #   --tb=short             — компактный traceback.
+      #   -o console_output_style=classic  — стабильный вывод.
+      #
+      # Fixtures из tests/smoke/conftest.py:
+      #   - dds_app_server (session): поднимает run.py на порту 8765.
+      #   - playwright_browser (session): headless Chromium.
+      #   - page (function): чистая страница на каждый тест.
+      # ---------------------------------------------------------------
+      - name: Run smoke tests
+        uses: nick-invision/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 10
+          retry_on: error
+          command: |
+            pytest tests/smoke/ \
+              -v \
+              -ra \
+              --strict-markers \
+              --tb=short \
+              -o console_output_style=classic
+
+      # ---------------------------------------------------------------
+      # 6. Публикация отчёта в Step Summary
+      #
+      # Краткий отчёт для быстрого просмотра результата:
+      # количество пройденных/упавших тестов, длительность.
+      # Полный отчёт — в artifacts.
+      #
+      # Если pytest не создал отчётный файл (например, упал
+      # на этапе collection), раздел просто не публикуется.
+      # ---------------------------------------------------------------
+      - name: Publish summary
+        if: always()
+        run: |
+          echo "## Smoke Tests Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Runner: \`ubuntu-latest\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Python: \`${PYTHON_VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Port: \`${DDS_SMOKE_PORT}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Playwright: headless Chromium" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f tests/smoke/artifacts/summary.txt ]; then
+            cat tests/smoke/artifacts/summary.txt >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "_Summary file not generated (pytest collection likely failed)._"
+          fi
+        shell: bash
+
+      # ---------------------------------------------------------------
+      # 7. Артефакты (всегда, даже при падении)
+      #
+      # Что сохраняется:
+      #   - tests/smoke/artifacts/ — screenshots и video от Playwright
+      #     (сохраняются только при падении теста; см. conftest.py).
+      #   - tests/smoke/app.log — stdout+stderr приложения DDS.
+      #   - dds.log — файловый лог приложения.
+      #   - smoke-config.json — фактический конфиг приложения
+      #     (для воспроизведения падения локально).
+      #
+      # Retention 14 дней — стандартный для CI-артефактов.
+      # ---------------------------------------------------------------
+      - name: Upload smoke test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-artifacts-${{ github.sha }}
+          path: |
+            tests/smoke/artifacts/
+            tests/smoke/app.log
+            tests/smoke/smoke-config.json
+            dds.log
+          retention-days: 14
+          if-no-files-found: warn

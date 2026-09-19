@@ -1,0 +1,498 @@
+# =====================================================================
+# Deep Doc Search — CI-job медленных бенчмарков.
+#
+# Назначение:
+#   Замер производительности полного сканирования каталога РД
+#   (scan.full) на фиксированном self-hosted runner'е. Сканирование
+#   включает все четыре этапа конвейера:
+#     1. Обход каталога (os.walk).
+#     2. Ленивое хеширование (SHA-256).
+#     3. Извлечение текста в subprocess через ProcessTaskRunner.
+#     4. Батчевая запись в SQLite.
+#
+#   Сравнение с baseline через Mann-Whitney U test. При статистически
+#   значимой деградации медианы > 15% — WARNING; > 30% — FAIL
+#   (блокировка).
+#
+# Покрываемые метрики:
+#   - test_scan_full_1000_pdfs — полное сканирование 1000 PDF.
+#
+# Почему отдельный workflow:
+#   - Длительность: один прогон ~2 минуты; 3 прогона + setup ≈
+#     10–15 минут. Это в 5–10 раз дороже bench-fast.
+#   - Триггеры: только push → main, расписание и ручной запуск.
+#     PR не триггерит по умолчанию — дорого для каждого коммита.
+#   - Опциональная метка `bench-slow` на PR: opt-in проверка при
+#     подозрении на регрессию сканирования.
+#
+# Модель сравнения (идентична bench-fast.yml):
+#   1. baseline.json содержит raw_samples для scan_full (3 значения).
+#   2. Текущий прогон пишется в JSON через pytest-benchmark.
+#   3. Mann-Whitney U test (scipy.stats) — p < 0.05 = значимо.
+#   4. Дельта медианы: OK ≤ 15% < WARNING ≤ 30% < FAIL.
+#
+# Особенность сканирования:
+#   Абсолютное время сильно зависит от размера PDF, содержимого
+#   (пустые/текстовые страницы), скорости диска и CPU. Baseline
+#   содержит как absolute-значения (для справки), так и относительные
+#   (нормированные на search.query). CI сравнивает относительные —
+#   они устойчивы к изменению runner-конфигурации при условии, что
+#   search.query не деградировал (см. bench-fast.yml).
+#
+# Датасет:
+#   1000 PDF генерируются на лету скриптом теста из in-memory
+#   шаблонов через PyMuPDF (см. tests/benchmarks/bench_slow.py).
+#   Датасет не хранится в репозитории — экономия ~50–100 МБ.
+#   Контрольная сумма и параметры генерации фиксированы, чтобы
+#   обеспечить детерминизм.
+#
+# Триггеры:
+#   - push → main: проверка на актуальной ветке.
+#   - workflow_dispatch: ручной запуск для диагностики.
+#   - schedule: еженедельно (понедельник 03:00 UTC), ловит
+#     медленную деградацию от зависимостей.
+#   - pull_request с меткой `bench-slow`: opt-in проверка.
+#
+# Concurrency:
+#   Отменяет предыдущие запуски на той же ветке/PR. Критично:
+#   scan.full нагружает диск и CPU, два параллельных запуска
+#   исказят оба замера.
+#
+# Совместимость:
+#   Требуется scipy (Mann-Whitney U) — есть в requirements-dev.txt.
+#   Требуется pytest-benchmark — есть в requirements-dev.txt.
+#   Требуется PyMuPDF (для генерации датасета) — есть в runtime.
+# =====================================================================
+
+name: Slow Benchmarks
+
+# =====================================================================
+# Триггеры запуска
+# =====================================================================
+on:
+  # Проверка после merge в main: baseline остаётся актуальным.
+  # Не на каждый push в feature-ветку — слишком дорого.
+  push:
+    branches: [main]
+    paths:
+      - 'dds_core/**'
+      - 'dds_web/**'
+      - 'tests/benchmarks/bench_slow.py'
+      - 'tests/benchmarks/baseline.json'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
+      - '.github/workflows/bench-slow.yml'
+
+  # Opt-in проверка на PR: срабатывает при добавлении метки
+  # `bench-slow`. Используется при подозрении на регрессию сканирования
+  # в конкретном PR.
+  pull_request:
+    branches: [main]
+    types: [labeled]
+    paths:
+      - 'dds_core/**'
+      - 'dds_web/**'
+      - 'tests/benchmarks/bench_slow.py'
+
+  # Еженедельный прогон (понедельник 03:00 UTC).
+  # Ловит медленную деградацию от обновлений зависимостей,
+  # OS-патчей, изменений в железе runner'а.
+  schedule:
+    - cron: '0 3 * * 1'
+
+  # Ручной запуск (например, при подозрении на регрессию,
+  # или для обновления baseline).
+  workflow_dispatch:
+
+# =====================================================================
+# Concurrency: отмена предыдущих запусков на той же ветке/PR.
+#
+# Критично для этого workflow: scan.full нагружает диск и CPU.
+# Два параллельных запуска на одном self-hosted runner'е искажают
+# оба замера (конкуренция за I/O и CPU).
+# =====================================================================
+concurrency:
+  group: bench-slow-${{ github.ref }}
+  cancel-in-progress: true
+
+# =====================================================================
+# Permissions: минимально необходимые.
+# =====================================================================
+permissions:
+  contents: read
+
+# =====================================================================
+# Переменные окружения, общие для всех шагов.
+# =====================================================================
+env:
+  # Python-версия соответствует docs/deployment.md.
+  PYTHON_VERSION: '3.12'
+
+  # Отключает периодическую проверку новых версий pip.
+  PIP_DISABLE_PIP_VERSION_CHECK: '1'
+
+  # Отключает создание .pyc-файлов: кэш байткода снижает
+  # воспроизводимость замеров.
+  PYTHONDONTWRITEBYTECODE: '1'
+
+  # Параметры генерации датасета (пробрасываются в тест).
+  # Детерминизм: одинаковый датасет между прогонами.
+  DDS_BENCH_SCAN_DOCS: '1000'
+  DDS_BENCH_SCAN_SEED: '42'
+
+jobs:
+  # -------------------------------------------------------------------
+  # Job: bench-slow
+  #
+  # Единственный job в workflow. Все шаги линейны.
+  # -------------------------------------------------------------------
+  bench-slow:
+    name: Slow benchmarks (scan 1000 PDFs)
+
+    # Self-hosted runner с фиксированной конфигурацией.
+    # Метки соответствуют tests/benchmarks/baseline.json → ci_runner.
+    runs-on: [self-hosted, linux, x64, dds-bench]
+
+    # Верхняя граница: 3 прогона × ~2 минуты + setup + генерация
+    # датасета (~30 сек). Реалистично 10–15 минут; 60 минут —
+    # страховка от зависания при деградации scan.full в 2–3 раза.
+    timeout-minutes: 60
+
+    # Условие срабатывания для PR:
+    #   запускать только если на PR есть метка `bench-slow`.
+    # Для push и schedule — всегда.
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'bench-slow')
+
+    steps:
+      # ---------------------------------------------------------------
+      # 1. Checkout
+      # ---------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # ---------------------------------------------------------------
+      # 2. Setup Python + кэш pip
+      #
+      # Кэш по requirements-dev.txt: при изменении файла кэш
+      # инвалидируется автоматически.
+      # ---------------------------------------------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      # ---------------------------------------------------------------
+      # 3. Установка зависимостей
+      # ---------------------------------------------------------------
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      # ---------------------------------------------------------------
+      # 4. Освобождение дискового пространства (опционально)
+      #
+      # 1000 сгенерированных PDF занимают ~50–100 МБ. Обычно не
+      # критично, но на self-hosted runner'е с ограниченным диском
+      # очистка временных файлов предыдущих прогонов может помочь.
+      # Удаляются временные каталоги, оставшиеся от предыдущих run'ов.
+      # ---------------------------------------------------------------
+      - name: Cleanup previous benchmark artifacts
+        run: |
+          rm -rf /tmp/dds-bench-* || true
+          df -h /tmp || true
+        shell: bash
+
+      # ---------------------------------------------------------------
+      # 5. Прогон медленных бенчмарков
+      #
+      # pytest-benchmark:
+      #   --benchmark-json=<file>      — сериализация результатов.
+      #   --benchmark-min-rounds=3     — 3 прогона (компромисс между
+      #                                  статистической значимостью
+      #                                  и временем CI; для scan
+      #                                  достаточно при стабильном
+      #                                  железе).
+      #   --benchmark-warmup=off       — прогрев не нужен: сканирование
+      #                                  включает I/O, прогрев не
+      #                                  устранит разброс от файлового
+      #                                  кэша ОС.
+      #   --benchmark-disable-gc       — отключить GC во время замера.
+      #
+      # Тест bench_scan_full_1000_pdfs генерирует датасет в
+      # tmp_path_factory (pytest fixture), запускает ScanPipeline
+      # с реальным SQLiteAdapter и ProcessTaskRunner.
+      #
+      # Результат: JSON {"benchmarks": [{"name": "test_scan_full_1000_pdfs",
+      #                                  "stats": {"data": [t1, t2, t3]}}]}.
+      # ---------------------------------------------------------------
+      - name: Run slow benchmarks
+        id: run_bench
+        run: |
+          pytest tests/benchmarks/bench_slow.py \
+            --benchmark-json=benchmark_slow_results.json \
+            --benchmark-min-rounds=3 \
+            --benchmark-warmup=off \
+            --benchmark-disable-gc \
+            --benchmark-sort=name \
+            -v
+
+      # ---------------------------------------------------------------
+      # 6. Сравнение с baseline
+      #
+      # Аналогично bench-fast.yml, но:
+      #   - только метрика scan_full;
+      #   - baseline содержит 3 raw samples (не 10);
+      #   - Mann-Whitney U на 3×3 samples (минимально допустимо для
+      #     непараметрического теста; при n < 3 U-test неприменим).
+      #
+      # Порог значимости p < 0.05.
+      # Fail при деградации > 30%.
+      # ---------------------------------------------------------------
+      - name: Compare with baseline
+        id: compare
+        run: |
+          python - <<'PYTHON'
+          import json
+          import os
+          import statistics
+          import sys
+          from pathlib import Path
+
+          from scipy.stats import mannwhitneyu
+
+          BASELINE_PATH = Path("tests/benchmarks/baseline.json")
+          CURRENT_PATH = Path("benchmark_slow_results.json")
+          SUMMARY_PATH = Path("bench_slow_summary.md")
+
+          # Пороги деградации медианы (в процентах).
+          WARN_THRESHOLD_PCT = 15.0
+          FAIL_THRESHOLD_PCT = 30.0
+
+          # Уровень значимости Mann-Whitney U test.
+          P_VALUE_THRESHOLD = 0.05
+
+          # Для U-test минимальный размер выборки с каждой стороны — 3.
+          # pytest-benchmark с --benchmark-min-rounds=3 гарантирует это.
+          MIN_SAMPLES_FOR_UTEST = 3
+
+          baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+          current = json.loads(CURRENT_PATH.read_text(encoding="utf-8"))
+
+          # Baseline для scan.full лежит в raw_samples["scan_full"].
+          base_values = baseline.get("raw_samples", {}).get("scan_full", [])
+
+          if len(base_values) < MIN_SAMPLES_FOR_UTEST:
+              print(
+                  f"Baseline for scan_full has {len(base_values)} samples "
+                  f"(need >= {MIN_SAMPLES_FOR_UTEST}). Skipping comparison.",
+                  file=sys.stderr,
+              )
+              # Не блокируем: baseline может быть неполным на ранних этапах.
+              Path(SUMMARY_PATH).write_text(
+                  "# Slow Benchmarks Summary\n\n"
+                  "Baseline has insufficient samples for scan_full.\n",
+                  encoding="utf-8",
+              )
+              sys.exit(0)
+
+          # Собрать текущие samples из pytest-benchmark JSON.
+          current_samples = {}
+          for bench in current.get("benchmarks", []):
+              name = bench["name"]
+              data = bench.get("stats", {}).get("data", [])
+              if data:
+                  current_samples[name] = [float(x) for x in data]
+
+          # Найти метрику scan_full. pytest-benchmark использует
+          # test-id как имя (например, "test_scan_full_1000_pdfs").
+          scan_key = None
+          for key in current_samples:
+              if "scan_full" in key:
+                  scan_key = key
+                  break
+
+          if scan_key is None:
+              print(
+                  "Metric 'scan_full' not found in current results. "
+                  f"Available: {list(current_samples.keys())}",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          curr_values = current_samples[scan_key]
+
+          if len(curr_values) < MIN_SAMPLES_FOR_UTEST:
+              print(
+                  f"Current scan_full has {len(curr_values)} samples "
+                  f"(need >= {MIN_SAMPLES_FOR_UTEST}).",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          # Mann-Whitney U (two-sided).
+          try:
+              _, p_value = mannwhitneyu(
+                  base_values, curr_values, alternative="two-sided"
+              )
+          except ValueError:
+              # Вырожденное распределение (все значения одинаковые).
+              p_value = 1.0
+
+          median_base = statistics.median(base_values)
+          median_curr = statistics.median(curr_values)
+          delta_pct = (
+              (median_curr / median_base - 1.0) * 100.0
+              if median_base > 0
+              else 0.0
+          )
+
+          if p_value < P_VALUE_THRESHOLD and delta_pct > FAIL_THRESHOLD_PCT:
+              status = "FAIL"
+          elif p_value < P_VALUE_THRESHOLD and delta_pct > WARN_THRESHOLD_PCT:
+              status = "WARNING"
+          else:
+              status = "OK"
+
+          # Markdown-отчёт.
+          lines = ["# Slow Benchmarks Summary", ""]
+          lines.append(f"Baseline runner: `{baseline.get('ci_runner', 'unknown')}`")
+          lines.append(f"Metric: `{scan_key}`")
+          lines.append("")
+          lines.append(
+              "| Status | Median (base) | Median (curr) | Δ% | p-value | n_base | n_curr |"
+          )
+          lines.append("|---|---|---|---|---|---|---|")
+          lines.append(
+              "| {status} | {mb:.3f} | {mc:.3f} | {d:+.2f}% | {p:.4f} | "
+              "{nb} | {nc} |".format(
+                  status=status,
+                  mb=median_base,
+                  mc=median_curr,
+                  d=delta_pct,
+                  p=p_value,
+                  nb=len(base_values),
+                  nc=len(curr_values),
+              )
+          )
+          lines.append("")
+          if status == "FAIL":
+              lines.append(
+                  f"**FAIL**: scan_full degraded by > {FAIL_THRESHOLD_PCT:.0f}% "
+                  f"(p < {P_VALUE_THRESHOLD})."
+              )
+          elif status == "WARNING":
+              lines.append(
+                  f"**WARNING**: scan_full degraded by > {WARN_THRESHOLD_PCT:.0f}% "
+                  f"(p < {P_VALUE_THRESHOLD}). Merge is not blocked."
+              )
+          else:
+              lines.append("**OK**: no significant degradation detected.")
+
+          summary = "\n".join(lines) + "\n"
+          SUMMARY_PATH.write_text(summary, encoding="utf-8")
+
+          # Публикация в GitHub Step Summary.
+          github_summary_path = os.environ.get("GITHUB_STEP_SUMMARY", "")
+          if github_summary_path:
+              try:
+                  with open(github_summary_path, "a", encoding="utf-8") as fh:
+                      fh.write(summary)
+              except OSError:
+                  pass
+
+          # Отладка: печать в stdout (видно в логах job).
+          print(summary)
+
+          if status == "FAIL":
+              sys.exit(1)
+          PYTHON
+        shell: bash
+
+      # ---------------------------------------------------------------
+      # 7. Артефакты (всегда, даже при падении шага сравнения)
+      #
+      # benchmark_slow_results.json — сырые результаты.
+      # bench_slow_summary.md — markdown-отчёт.
+      #
+      # Retention 30 дней (вдвое больше bench-fast): медленные
+      # бенчмарки запускаются реже, artefact нужен дольше для
+      # тренд-анализа и расследования регрессий.
+      # ---------------------------------------------------------------
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-slow-results-${{ github.sha }}
+          path: |
+            benchmark_slow_results.json
+            bench_slow_summary.md
+          retention-days: 30
+          if-no-files-found: warn
+
+      # ---------------------------------------------------------------
+      # 8. Публикация комментария к PR (только для PR-триггера)
+      #
+      # При запуске на PR с меткой `bench-slow` публикуется комментарий
+      # с результатами. Требует pull-requests: write permission.
+      #
+      # Для PR из форков (обычно) не выполняется — GitHub Actions
+      # ограничивает permissions для таких PR. В этом случае отчёт
+      # доступен через Step Summary и artifact.
+      #
+      # Если PR без метки — job не запускается (см. if: выше),
+      # так что этот шаг не сработает.
+      # ---------------------------------------------------------------
+      - name: Comment PR with results
+        if: >-
+          always()
+          && github.event_name == 'pull_request'
+          && hashFiles('bench_slow_summary.md') != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let summary = '';
+            try {
+              summary = fs.readFileSync('bench_slow_summary.md', 'utf8');
+            } catch (err) {
+              core.warning(`Failed to read bench_slow_summary.md: ${err}`);
+              return;
+            }
+
+            const marker = '<!-- bench-slow-report -->';
+            const body = `${marker}\n${summary}`;
+
+            // Найти существующий комментарий от бота с тем же маркером
+            // и обновить его вместо создания нового. Экономит шум в PR.
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(
+              (c) => c.body && c.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

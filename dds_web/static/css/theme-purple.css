@@ -1,0 +1,87 @@
+/* ==================================================================
+Deep Doc Search — пурпурная тема (вариант на основе theme-dark).
+Заменяет оттенки синего и голубого на фиолетовые и пурпурные,
+близкие к палитре Wildberries.
+
+Основные изменения относительно theme-dark.css:
+- --fg-accent, --fg-link, --fg-info, --border-focus, --bg-button,
+  --bg-button-hover, --bg-statusbar, --bg-selected, --bg-badge-info
+  заменены на фиолетовые/пурпурные аналоги.
+- Жёстко заданные голубые элементы (точка статуса running,
+  подсветка применённого фильтра) переопределены.
+
+Механизм переключения тем:
+Активная тема подключается как отдельный файл через
+``<link id="theme-stylesheet">`` в ``base.html``. Смена темы
+выполняется через ``ThemeManager.applyTheme()``, который
+подменяет ``href`` у этого элемента. Атрибут ``data-theme``
+на ``<html>`` не используется. Единственный рабочий
+селектор — ``:root``.
+================================================================== */
+:root {
+    /* ── Фоны ── */
+    --bg-activitybar: #2E0A4E;
+    /* тёмно-фиолетовый, почти чёрный */
+    --bg-sidebar: #1F0A3C;
+    --bg-editor: #17082E;
+    --bg-tabbar: #1F0A3C;
+    --bg-tab-active: #17082E;
+    --bg-tab-inactive: #26104A;
+    --bg-statusbar: #4A148C;
+    /* насыщенный тёмно-фиолетовый */
+    --bg-input: #2B1154;
+    --bg-hover: #341A5C;
+    --bg-selected: #5A0F8F;
+    /* фирменный тёмный фиолетовый WB */
+    --bg-button: #6C2BD9;
+    /* основной фиолетовый */
+    --bg-button-hover: #7D3BE5;
+    --bg-button-danger: #C53030;
+    /* красный оставлен */
+    --bg-button-danger-hover: #E53E3E;
+
+    /* ── Полупрозрачные фоны бейджей ── */
+    --bg-badge-success: #2EA04333;
+    --bg-badge-error: #F14C4C33;
+    --bg-badge-warning: #CCA70033;
+    --bg-badge-info: #9B30FF33;
+    /* фиолетовый */
+    --bg-badge-muted: #88888833;
+
+    /* ── Цвета текста и элементов ── */
+    --fg-primary: #FFFFFF;
+    --fg-secondary: #FFFFFF;
+    --fg-muted: #B39DDB;
+    /* мягкий серо-фиолетовый */
+    --fg-active: #FFFFFF;
+    --fg-link: #C56CF0;
+    /* светло-пурпурный */
+    --fg-accent: #9B30FF;
+    /* яркий фиолетовый */
+    --fg-success: #4EC9B0;
+    --fg-error: #F48771;
+    --fg-warning: #CCA700;
+    --fg-info: #C56CF0;
+    /* совпадает с fg-link */
+    --fg-statusbar: #FFFFFF;
+    --fg-button: #FFFFFF;
+
+    /* ── Границы ── */
+    --border-color: #5A2E8C;
+    --border-focus: #9B30FF;
+    --border-subtle: #3A1B5E;
+}
+
+/* Переопределение жёстко заданных голубых элементов из base.css */
+.status-bar__dot--running {
+    background-color: #9B30FF;
+    /* вместо #3794ff */
+    animation: pulse 1.5s infinite;
+    /* сохраняем анимацию */
+}
+
+.filter-applied {
+    border-color: #C56CF0 !important;
+    box-shadow: 0 0 0 1px #C56CF0;
+    color: #C56CF0;
+}

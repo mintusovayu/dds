@@ -1,0 +1,287 @@
+# =====================================================================
+# Deep Doc Search — конфигурация pre-commit hooks.
+#
+# Назначение:
+#   Автоматическая проверка изменений перед коммитом: гигиена файлов,
+#   форматирование, статическая типизация, архитектурные контракты,
+#   отсутствие SQL-строк в контрактах application-слоя, lifecycle
+#   deprecations, совместимость внешних модулей.
+#
+# Установка (один раз на клон репозитория):
+#   pip install -r requirements-dev.txt
+#   pre-commit install
+#
+# Ручной прогон всех хуков на всех файлах:
+#   pre-commit run --all-files
+#
+# Ручной прогон одного хука:
+#   pre-commit run <hook-id> --all-files
+#
+# Порядок работы хуков:
+#   1. Стандартные file-hygiene (trailing whitespace, EOF, YAML/JSON).
+#   2. ruff (lint + автофикс), ruff-format.
+#   3. mypy (типизация).
+#   4. Локальные проектные хуки:
+#      4.1. Регенерация .importlinter из exceptions.yaml.
+#      4.2. Запуск import-linter (архитектурные контракты).
+#      4.3. Проверка отсутствия SQL-строк в контрактах.
+#      4.4. Проверка lifecycle исключений import-linter.
+#      4.5. Проверка совместимости dds_modules/ с DEPRECATIONS.yaml.
+#      4.6. Проверка lifecycle deprecations.
+#
+# Принципы:
+#   - fail_fast: false — все хуки запускаются, даже если один упал.
+#     Это даёт полную картину проблем за один прогон.
+#   - default_language_version: python3.12 — соответствует
+#     docs/deployment.md (минимальная поддерживаемая версия).
+#   - Все локальные хуки — pass_filenames: false. Причина: инструменты
+#     сканируют весь проект или один файл, а не список изменённых.
+#     Паттерн files: используется только для решения «запускать или нет».
+#   - Регенерация .importlinter выполняется ДО import-linter, чтобы
+#     контракты проверялись на актуальной конфигурации.
+#   - Проверка исключений — ПОСЛЕ import-linter, чтобы не блокировать
+#     запуск контрактов при временном расхождении фаз.
+#
+# Связь с CI:
+#   Те же проверки прогоняются в CI (.github/workflows/*.yml).
+#   Дополнительно CI запускает generate_importlinter_config.py --check
+#   (без записи файла) — гарантирует, что .importlinter актуален.
+# =====================================================================
+
+
+# =====================================================================
+# Глобальные настройки
+# =====================================================================
+
+# Хуки запускаются только на этапе pre-commit (не на pre-push).
+# При необходимости расширить — добавить pre-push для тяжёлых проверок.
+default_stages: [pre-commit]
+
+# Продолжать после первого провала: за один прогон видно все проблемы,
+# а не только первую. Экономит время разработчика.
+fail_fast: false
+
+# Версия Python по умолчанию для хуков с language: python.
+# Соответствует минимальной поддерживаемой версии DDS.
+default_language_version:
+  python: python3.12
+
+
+# =====================================================================
+# Репозитории хуков
+# =====================================================================
+
+repos:
+
+  # ---------------------------------------------------------------------
+  # 1. Стандартные хуки: гигиена файлов
+  #
+  # Быстрые проверки, ловящие механические проблемы до более сложных
+  # анализов. Официальный репозиторий pre-commit.
+  # ---------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      # Удаление пробелов в конце строк.
+      - id: trailing-whitespace
+
+      # Обеспечение единственного перевода строки в конце файла.
+      - id: end-of-file-fixer
+
+      # Валидация YAML-синтаксиса (exceptions.yaml, DEPRECATIONS.yaml,
+      # .pre-commit-config.yaml и все остальные).
+      - id: check-yaml
+
+      # Валидация JSON-синтаксиса (config.json, baseline.json).
+      - id: check-json
+
+      # Валидация TOML-синтаксиса (pyproject.toml, если появится).
+      - id: check-toml
+
+      # Запрет коммита файлов > 1 МБ. Защита от случайного добавления
+      # PDF-документов, baseline-данных большого размера и т.п.
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+
+      # Обнаружение незакрытых merge-конфликтов.
+      - id: check-merge-conflict
+
+      # Обнаружение конфликтов регистра имён файлов.
+      # Критично для кроссплатформенной разработки (Linux/macOS/Windows).
+      - id: check-case-conflict
+
+      # Нормализация переводов строк (LF) — совместимость с CI.
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+      # Обнаружение отладочных операторов: breakpoint(), pdb.set_trace(),
+      # print(...) в не-тестовом коде. Защита от попадания debug-кода
+      # в production-коммит.
+      - id: debug-statements
+
+      # Обнаружение случайно закоммиченных приватных ключей.
+      # Критично для безопасности (см. обсуждение паролей в config.json).
+      - id: detect-private-key
+
+  # ---------------------------------------------------------------------
+  # 2. Ruff: линтер и форматтер
+  #
+  # Заменяет flake8 + isort + black одним инструментом.
+  # Быстрый (Rust), совместим с Python 3.12.
+  #
+  # Порядок: ruff (lint + автофикс) → ruff-format (форматирование).
+  # Автофикс и форматтер могут изменять файлы; pre-commit в этом случае
+  # завершается с ошибкой и просит разработчика перестейджить изменения.
+  # ---------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.9
+    hooks:
+      # Линтер с автофиксом. --exit-non-zero-on-fix гарантирует, что
+      # pre-commit зафиксирует факт изменения файла и прервёт коммит.
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+
+      # Форматтер (аналог black). Автоматически приводит стиль
+      # к единообразному виду.
+      - id: ruff-format
+
+  # ---------------------------------------------------------------------
+  # 3. mypy: статическая типизация
+  #
+  # Критично для контроля «протечек» типов через контракты:
+  #   - SearchResult.pages: tuple vs list;
+  #   - ProcessTaskRunner.run: kind Literal vs str;
+  #   - WordIndex и WordEntry: picklability через frozen/slots.
+  #
+  # --ignore-missing-imports: PyMuPDF (fitz), Playwright и другие
+  #   библиотеки без type stubs не блокируют проверку.
+  # --follow-imports=silent: mypy проверяет только указанные файлы,
+  #   не углубляясь в импортированные модули (быстрее).
+  # ---------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.7.1
+    hooks:
+      - id: mypy
+        args:
+          - --ignore-missing-imports
+          - --follow-imports=silent
+          - --show-error-codes
+        additional_dependencies:
+          # mypy должен видеть типы внешних зависимостей проекта.
+          - pydantic>=2.0.0
+          - types-PyYAML
+
+  # ---------------------------------------------------------------------
+  # 4. Локальные хуки: проектные проверки
+  #
+  # Инструменты из tools/, реализующие контракты архитектуры:
+  #   - направление зависимостей между слоями;
+  #   - отсутствие SQL-строк в application-контрактах;
+  #   - lifecycle deprecations;
+  #   - совместимость внешних модулей.
+  #
+  # Все хуки — pass_filenames: false: инструменты сканируют весь проект
+  # или один файл, а не список изменённых файлов. files: используется
+  # для решения «запускать или нет».
+  # ---------------------------------------------------------------------
+  - repo: local
+    hooks:
+
+      # 4.1. Регенерация .importlinter.
+      #
+      # .importlinter — производный файл от exceptions.yaml.
+      # При изменении exceptions.yaml конфигурация должна быть
+      # пересоздана. Хук запускается автоматически; если файл был
+      # изменён, pre-commit прерывает коммит и просит перестейджить
+      # обновлённый .importlinter.
+      - id: generate-importlinter-config
+        name: Regenerate .importlinter from exceptions.yaml
+        description: >
+          Пересоздаёт .importlinter на основе
+          docs/architecture-decisions/exceptions.yaml.
+        entry: python tools/generate_importlinter_config.py
+        language: system
+        files: ^docs/architecture-decisions/exceptions\.yaml$
+        pass_filenames: false
+
+      # 4.2. Запуск import-linter.
+      #
+      # Проверяет архитектурные контракты: направление зависимостей
+      # между слоями (domain, application, infrastructure, dds_web),
+      # изоляцию subprocess_tasks, запрет импорта infrastructure из
+      # application.
+      #
+      # Запускается после регенерации конфигурации, чтобы проверять
+      # актуальные контракты.
+      - id: import-linter
+        name: Run import-linter (architectural contracts)
+        description: >
+          Проверяет направление зависимостей между слоями согласно
+          сгенерированному .importlinter.
+        entry: lint-imports
+        language: system
+        files: \.py$
+        pass_filenames: false
+
+      # 4.3. Проверка отсутствия SQL-строк в контрактах.
+      #
+      # Контракты application-слоя (ITextIndexer, IDatabase) не должны
+      # содержать SQL-строк (SELECT/INSERT/UPDATE/DELETE). Проверка
+      # защищает от регрессов после Фазы 5 (DocumentIndexPlan).
+      - id: check-no-sql-in-contracts
+        name: Verify no SQL strings in application contracts
+        description: >
+          Сканирует dds_core/domain/interfaces.py на наличие
+          SQL-строк в контрактах application-слоя.
+        entry: python tools/check_no_sql_in_contracts.py
+        language: system
+        files: ^dds_core/domain/interfaces\.py$
+        pass_filenames: false
+
+      # 4.4. Проверка lifecycle исключений import-linter.
+      #
+      # Каждое исключение в exceptions.yaml имеет целевую фазу
+      # устранения. Хук проверяет, что исключения не «зависли» сверх
+      # срока. Запускается при изменении exceptions.yaml или
+      # .importlinter.
+      - id: check-import-linter-exceptions
+        name: Verify import-linter exceptions lifecycle
+        description: >
+          Проверяет, что исключения в exceptions.yaml не старше
+          целевой фазы устранения.
+        entry: python tools/check_import_linter_exceptions.py
+        language: system
+        files: ^(docs/architecture-decisions/exceptions\.yaml|\.importlinter)$
+        pass_filenames: false
+
+      # 4.5. Проверка совместимости внешних модулей.
+      #
+      # dds_modules/ не должны использовать символы, помеченные как
+      # deprecated или removed в DEPRECATIONS.yaml. AST-парсинг
+      # модулей + сверка с DEPRECATIONS.yaml. Запускается при
+      # изменении DEPRECATIONS.yaml или любого модуля.
+      - id: check-module-compatibility
+        name: Verify dds_modules/ against DEPRECATIONS.yaml
+        description: >
+          AST-парсинг dds_modules/**/*.py на использование символов,
+          помеченных deprecated или removed.
+        entry: python tools/check_module_compatibility.py
+        language: system
+        files: ^(docs/DEPRECATIONS\.yaml|dds_modules/.*\.py)$
+        pass_filenames: false
+
+      # 4.6. Проверка lifecycle deprecations.
+      #
+      # Устаревшие символы имеют дату удаления (remove_in_phase).
+      # Хук проверяет, что срок не пропущен: если remove_in_phase
+      # меньше текущей фазы, а запись ещё в DEPRECATIONS.yaml —
+      # это ошибка (забыли удалить).
+      - id: check-deprecations
+        name: Verify DEPRECATIONS.yaml lifecycle
+        description: >
+          Проверяет, что все записи в DEPRECATIONS.yaml имеют
+          актуальный remove_in_phase и не просрочены.
+        entry: python tools/check_deprecations.py
+        language: system
+        files: ^docs/DEPRECATIONS\.yaml$
+        pass_filenames: false

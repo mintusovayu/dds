@@ -1,0 +1,2169 @@
+/* ==================================================================
+Deep Doc Search — базовые стили интерфейса.
+Файл содержит все стили веб-интерфейса DDS в стиле
+Visual Studio Code. Вынесение стилей из инлайн-блока
+``base.html`` в отдельный файл обеспечивает:
++----------------------------------+----------------------------------+
+| Принцип                          | Реализация                       |
++==================================+==================================+
+| Разделение ответственности       | Разметка (HTML), стили (CSS) и  |
+|                                  | поведение (JS) хранятся в       |
+|                                  | отдельных файлах.               |
++----------------------------------+----------------------------------+
+| Единая точка стилизации          | Все стили определены в одном    |
+|                                  | файле. Дублирование исключено.  |
++----------------------------------+----------------------------------+
+| Темизация через переменные       | Структурные размеры, шрифты     |
+|                                  | и скругления заданы через CSS   |
+|                                  | Custom Properties в ``:root``.  |
+|                                  | Цвета вынесены в файлы тем.     |
++----------------------------------+----------------------------------+
+| Кэширование браузером            | Внешний CSS-файл кэшируется     |
+|                                  | браузером, в отличие от         |
+|                                  | инлайн-стилей.                  |
++----------------------------------+----------------------------------+
+Система иконок (плоский дизайн, стиль VS Code):
+- Все иконки — инлайновые SVG с ``stroke="currentColor"``.
+- Размер и обводка задаются ТОЛЬКО через классы ``.icon``,
+  ``.icon--sm``, ``.icon--xs``. Контекстные селекторы
+  (``.btn svg``, ``.tab__icon svg`` и т.п.) не используются
+  для устранения дублирования и конфликтов специфичности.
+- Размеры иконок управляются CSS-переменными
+  ``--icon-size``, ``--icon-size-sm``, ``--icon-size-xs``
+  в ``:root`` и переопределяются в media-query для адаптивности.
+- Цвет наследуется от родительского элемента через ``color``,
+  что обеспечивает автоматическую тематизацию.
+- Внутри <svg> в HTML остаются только атрибуты ``xmlns``
+  и ``viewBox`` — остальное задано в этом CSS через класс
+  ``.icon``.
+Рефакторинг статус-бара и удаление Title Bar:
+- Удалены стили верхней панели (``.titlebar``, ``.titlebar__*``).
+- Удалена переменная ``--titlebar-height``.
+- Обновлён расчёт высоты страницы входа (``.login-container``).
+Рефакторинг формы поиска:
+- Форма поиска — flex-контейнер с кнопкой слева и полем ввода.
+- Кнопка и поле ввода имеют одинаковую высоту (40 px).
+- Панель результатов использует всю ширину контейнера.
+Условная панель прокрутки:
+- Для областей с вертикальной прокруткой полоса отображается
+  только при переполнении контента.
+Оптимизация таблицы результатов:
+- Уменьшены вертикальные отступы у ``.table th``.
+Однострочное отображение имени файла:
+- Первый столбец таблицы результатов — ``white-space: nowrap``.
+Скачивание документов:
+- Стили полосы прогресса загрузки ``.download-progress`` и
+  ``.download-progress-bar``, анимация ожидания.
+Фильтры по метаданным (автодополнение):
+- Поля ввода с автодополнением, выпадающий список,
+  вертикальная группа чекбоксов, класс ``.filter-applied``.
+Activity Bar (индикатор активности):
+- Индикатор активной иконки ``.activity-bar__item.active::before``
+  смещён вправо на ``--activity-indicator-offset`` (по умолчанию
+  2 px) и имеет скругление справа, чтобы не сливаться с границей
+  окна.
+Адаптивность размеров иконок:
+- В media-query ``@media (max-width: 768px)`` переменные
+  ``--icon-size``, ``--icon-size-sm``, ``--icon-size-xs``
+  переопределяются на уменьшенные значения.
+Группировка результатов поиска (серверная группировка):
+- Одна строка на документ (``.search-doc-row``), опционально
+  строка-контейнер (``.search-children-row``) с дочерними
+  строками страниц.
+- Список страниц и кнопка раскрытия (``.search-expand-btn``).
+- Значок-стрелка (``.search-expand-icon``) с анимацией поворота.
+  Размер стрелки увеличен на 50% относительно ``--icon-size-xs``
+  (21 px вместо 14 px) и выровнен по правому краю столбца
+  «Страницы».
+- Раскрывающийся контейнер (``.search-children-container``)
+  с анимацией через ``max-height`` и ``opacity``.
+- Отступ дочерних строк управляется переменной
+  ``--search-tree-indent``.
+- Строки с несколькими страницами получают класс ``expandable``
+  (курсор-указатель, кликабельны целиком).
+- Раскрытая строка документа получает класс ``active``
+  и подсвечивается фоном ``--bg-selected``.
+- Содержимое столбца «Страницы» выравнивается по центру
+  по вертикали (в один уровень с именем документа в первом
+  столбце) и по левому краю по горизонтали.
+Пасхалка «большой белый самолет»:
+- Стили элемента ``.dds-airplane-easter-egg`` и CSS-анимация
+  ``dds-airplane-fly`` — пролёт самолёта слева направо.
+- Элемент создаётся в ``search.js`` при срабатывании условий
+  пасхалки (фраза в поле поиска + слово «домой» в поле объекта).
+- Анимация чисто декоративная, не мешает обычному поиску
+  (``pointer-events: none``, высокий ``z-index``).
+Предпросмотр документа (рендер страницы и подсветка):
+- Растровый рендер страницы PDF (PNG) с наложением слоя подсветки
+  совпадений. Стили раздела «22. Предпросмотр документа».
+- Fit-width: при первом рендере страницы изображение автоматически
+  масштабируется по ширине контейнера. Размеры изображения
+  управляются через явные пиксельные ``style.width``/``style.height``
+  на ``<img>`` (не через ``transform: scale``), что синхронизирует
+  layout контейнера с визуальным отображением и обеспечивает
+  корректную работу скроллбара.
+- Панорамирование: перетаскивание правой кнопкой мыши по рендеру
+  перемещает страницу. Курсор ``grab`` → ``grabbing``. Системное
+  контекстное меню на ``.page-render-container`` подавлено
+  (обработчик ``contextmenu`` в ``document.js``).
+- Контейнер ``.page-render-container`` с нативным скроллом;
+  прокрутка обеспечивается родительским ``.editor-content``
+  без вложенного ``max-height`` (устранение двойного скроллбара).
+- Обёртка ``.page-render-wrapper`` для ``<img>`` и overlay;
+  размеры управляются через явные ``style`` на ``<img>``.
+- Слой подсветки ``.page-render-overlay`` (``pointer-events: none``)
+  поверх ``<img>``; прямоугольники ``.page-render-highlight``
+  позиционируются в процентах, координаты приходят с сервера
+  в нормализованных единицах ``[0..1]``.
+- Цвет подсветки — бирюзовый (``--page-render-highlight-bg``,
+  ``--page-render-highlight-border``). Определён в ``:root``,
+  единый для всех тем.
+- Переключатель режима просмотра ``.page-view-switch`` с кнопками
+  «Рендер» / «Текст»; активная кнопка — класс ``active``,
+  заблокированная (после fallback на текст) — атрибут ``disabled``
+  и класс ``.page-render-switch-disabled``.
+- Скелетон ``.page-render-skeleton`` для индикации загрузки.
+- Стиль сообщения fallback ``.page-render-fallback``.
+- Панель навигации: ``.doc-nav-controls`` — flex-контейнер
+  с пагинацией слева и чекбоксом «Навигация по всем страницам»
+  справа. ``.doc-checkbox-label`` — стиль обёртки чекбокса;
+  ``.doc-checkbox-label.is-disabled`` — состояние недоступности,
+  когда у документа нет совпадений (открытие без правого клика
+  из результатов поиска). Класс используется также для чекбокса
+  «Ротация координат» в блоке ``.doc-render-controls``.
+- Блок контролов рендера ``.doc-render-controls`` — flex-контейнер
+  для чекбокса «Ротация координат», размещённый между
+  переключателем режимов и метаданными документа.
+Компоновка (референс — VS Code):
++----------------------------------------------------------------+
+| Activity Bar (48px) | Sidebar (280px) | Editor Area           |
+|                     |                 | ┌─────────────────────┐ |
+|                     |                 | │ Tab Bar (36px)      │ |
+|                     |                 | ├─────────────────────┤ |
+|                     |                 | │ Editor Content      │ |
+|                     |                 | └─────────────────────┘ |
++---------------------+-----------------+------------------------+
+| Status Bar (24px)                                              |
++----------------------------------------------------------------+
+Подключение в ``base.html``:
+<link rel="stylesheet" href="/static/css/base.css">
+<link id="theme-stylesheet" rel="stylesheet" href="/static/css/theme-dark.css">
+Зависимости:
+- Нет внешних зависимостей (без фреймворков).
+- Шрифты: системный стек (без загрузки веб-шрифтов).
+- Цветовые переменные: определены в файлах тем.
+Структура файла:
+1.  Переменные (структурные, шрифты, скругления).
+2.  Сброс и базовые стили.
+3.  Иконки (общая система SVG).
+4.  Компоновка приложения.
+5.  Вкладки.
+6.  Формы и поля ввода (включая автодополнение).
+7.  Кнопки.
+8.  Карточки.
+9.  Таблицы.
+10. Полоса прогресса загрузки.
+11. Бейджи.
+12. Алерты.
+13. Пагинация.
+14. Сниппеты поиска.
+15. Текст документа.
+16. Форма входа.
+17. Панель настроек.
+18. Утилиты.
+19. Адаптивность.
+20. Группировка результатов поиска.
+21. Пасхалка «большой белый самолет».
+22. Предпросмотр документа (рендер и подсветка).
+================================================================== */
+/* ==================================================================
+1. Переменные (структурные)
+==================================================================
+Все цвета вынесены в файлы тем. Здесь определены
+только структурные размеры, шрифты, скругления и тени.
+================================================================== */
+:root {
+    /* Скругления и тени */
+    --radius: 4px;
+    --radius-lg: 6px;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+    --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.2);
+    /* Шрифты */
+    --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "Cascadia Code", "Fira Code", "JetBrains Mono",
+        "Consolas", "Courier New", monospace;
+    --font-size: 15px;
+    --font-size-sm: 14px;
+    --font-size-lg: 16px;
+    --line-height: 1.5;
+    /* Размеры компоновки */
+    --activitybar-width: 48px;
+    --sidebar-width: 280px;
+    --statusbar-height: 24px;
+    --tabbar-height: 36px;
+    /* Размеры иконок */
+    --icon-stroke-width: 1.75;
+    --icon-size: 24px;
+    --icon-size-sm: 18px;
+    --icon-size-xs: 14px;
+    /* Смещение индикатора активной иконки Activity Bar */
+    --activity-indicator-offset: 2px;
+    /* Отступ дочерних строк в группированных результатах поиска */
+    --search-tree-indent: 34px;
+    /* Размер стрелки раскрытия группы страниц (на 50% больше
+       --icon-size-xs: 14px × 1.5 = 21px) */
+    --search-expand-icon-size: 21px;
+    /* Минимальная ширина столбца «Страницы» для правого
+       выравнивания стрелки раскрытия */
+    --search-pages-cell-min-width: 100px;
+    /* Пасхалка: размер самолёта и длительность анимации */
+    --airplane-size: 64px;
+    --airplane-duration: 4s;
+    /* Предпросмотр документа: цвет подсветки совпадений.
+       Бирюзовый (turquoise, #40E0D0) с пониженной прозрачностью
+       для сохранения читаемости текста PDF под подсветкой. */
+    --page-render-highlight-bg: rgba(64, 224, 208, 0.35);
+    --page-render-highlight-border: rgba(0, 180, 170, 0.75);
+    /* Предпросмотр документа: минимальная высота скелетона
+       загрузки рендера */
+    --page-render-skeleton-min-height: 500px;
+}
+
+/* ==================================================================
+2. Сброс и базовые стили
+================================================================== */
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html,
+body {
+    height: 100%;
+    overflow: hidden;
+}
+
+body {
+    font-family: var(--font-family);
+    font-size: var(--font-size);
+    line-height: var(--line-height);
+    background-color: var(--bg-editor);
+    color: var(--fg-primary);
+    display: flex;
+    flex-direction: column;
+}
+
+/* ==================================================================
+3. Иконки (общая система SVG)
+==================================================================
+Единая система плоских монохромных SVG-иконок в стиле Feather/VSCode.
+Цвет наследуется через ``currentColor`` от родительского элемента.
+Размеры задаются классами-модификаторами и управляются
+CSS-переменными ``--icon-size``, ``--icon-size-sm``, ``--icon-size-xs``.
+Все SVG-иконки в разметке должны иметь класс ``.icon``
+и один из модификаторов размера.
+================================================================== */
+.icon {
+    width: var(--icon-size);
+    height: var(--icon-size);
+    display: inline-block;
+    flex-shrink: 0;
+    vertical-align: middle;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: var(--icon-stroke-width);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+}
+
+.icon--sm {
+    width: var(--icon-size-sm);
+    height: var(--icon-size-sm);
+}
+
+.icon--xs {
+    width: var(--icon-size-xs);
+    height: var(--icon-size-xs);
+}
+
+/* ==================================================================
+4. Компоновка приложения
+================================================================== */
+/* ── Основной контейнер ── */
+.app-container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* ── Activity Bar ── */
+.activity-bar {
+    width: var(--activitybar-width);
+    min-width: var(--activitybar-width);
+    background-color: var(--bg-activitybar);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    border-right: 1px solid var(--border-subtle);
+    user-select: none;
+}
+
+/*
+ * Кнопка-иконка Activity Bar в стиле VS Code.
+ * Плоский дизайн: без фона, без скруглений, монохромный SVG.
+ * Цвет наследуется из CSS-переменных темы через свойство color.
+ */
+.activity-bar__item {
+    width: 100%;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--fg-muted);
+    cursor: pointer;
+    border: none;
+    border-radius: 0;
+    background: none;
+    padding: 0;
+    margin: 0;
+    outline: none;
+    font: inherit;
+    text-decoration: none;
+    transition: color 0.15s ease;
+    position: relative;
+}
+
+/* Наведение: изменение цвета без фона (в стиле VS Code) */
+.activity-bar__item:hover {
+    color: var(--fg-active);
+}
+
+/* Фокус для доступности: внутренний контур без сливания с границей */
+.activity-bar__item:focus-visible {
+    box-shadow: inset 0 0 0 1px var(--border-focus);
+}
+
+/* Активное состояние: цвет ярче + полоска у левого края */
+.activity-bar__item.active {
+    color: var(--fg-active);
+}
+
+/*
+ * Индикатор активной иконки — вертикальная полоска.
+ * Смещение задано переменной ``--activity-indicator-offset``,
+ * чтобы не сливаться с границей окна.
+ */
+.activity-bar__item.active::before {
+    content: "";
+    position: absolute;
+    left: var(--activity-indicator-offset);
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background-color: var(--fg-accent);
+    border-radius: 0 1px 1px 0;
+}
+
+.activity-bar__spacer {
+    flex: 1;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+    width: var(--sidebar-width);
+    min-width: var(--sidebar-width);
+    max-width: var(--sidebar-width);
+    background-color: var(--bg-sidebar);
+    border-right: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.sidebar__header {
+    padding: 10px 14px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--fg-secondary);
+    user-select: none;
+}
+
+.sidebar__content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 10px 10px;
+    scrollbar-width: thin;
+    scrollbar-gutter: auto;
+}
+
+.sidebar__content::-webkit-scrollbar {
+    width: 10px;
+}
+
+.sidebar__content::-webkit-scrollbar-thumb {
+    background-color: rgba(121, 121, 121, 0.4);
+    border-radius: 5px;
+}
+
+.sidebar__content::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(121, 121, 121, 0.7);
+}
+
+.sidebar__section {
+    margin-bottom: 16px;
+}
+
+.sidebar__section-title {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--fg-secondary);
+    margin-bottom: 6px;
+    padding: 4px 0;
+}
+
+/* Группа чекбоксов фильтров (вертикальное расположение) */
+.filter-checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.filter-checkbox-group label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 0;
+    cursor: pointer;
+}
+
+.filter-checkbox-group input[type="checkbox"] {
+    flex-shrink: 0;
+}
+
+/* ── Editor Area ── */
+.editor-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background-color: var(--bg-editor);
+}
+
+/* ── Status Bar ── */
+.status-bar {
+    height: var(--statusbar-height);
+    min-height: var(--statusbar-height);
+    background-color: var(--bg-statusbar);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+    font-size: var(--font-size-sm);
+    color: var(--fg-statusbar);
+    user-select: none;
+    z-index: 100;
+}
+
+.status-bar__left,
+.status-bar__right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.status-bar__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    font-size: var(--font-size-sm);
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 1;
+    min-width: 0;
+    height: 100%;
+}
+
+/* Цветные индикаторы (точки) в панели статуса */
+.status-bar__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.status-bar__dot--ok {
+    background-color: #4ec9b0;
+}
+
+.status-bar__dot--partial {
+    background-color: #cca700;
+}
+
+.status-bar__dot--empty {
+    background-color: #888888;
+}
+
+.status-bar__dot--running {
+    background-color: #3794ff;
+    animation: pulse 1.5s infinite;
+}
+
+.status-bar__dot--error {
+    background-color: #f48771;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.4;
+    }
+}
+
+/* Кнопка выхода в статус-баре */
+.status-bar__logout-form {
+    display: inline-flex;
+    align-items: center;
+    margin: 0;
+    height: 100%;
+}
+
+.status-bar__logout-btn {
+    background: none;
+    border: none;
+    color: var(--fg-statusbar);
+    cursor: pointer;
+    padding: 0 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    border-radius: var(--radius);
+    transition: background-color 0.15s;
+    height: 100%;
+}
+
+.status-bar__logout-btn:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* ==================================================================
+5. Вкладки (Tab Bar)
+================================================================== */
+.tab-bar {
+    height: var(--tabbar-height);
+    min-height: var(--tabbar-height);
+    background-color: var(--bg-tabbar);
+    display: flex;
+    align-items: stretch;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-bottom: 1px solid var(--border-subtle);
+    user-select: none;
+}
+
+.tab-bar::-webkit-scrollbar {
+    height: 3px;
+}
+
+.tab-bar::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 2px;
+}
+
+.tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    font-size: var(--font-size-sm);
+    color: var(--fg-secondary);
+    background-color: var(--bg-tab-inactive);
+    border-right: 1px solid var(--border-subtle);
+    cursor: pointer;
+    white-space: nowrap;
+    min-width: 0;
+    max-width: 200px;
+    position: relative;
+    text-decoration: none;
+    transition: background-color 0.15s;
+}
+
+.tab:hover {
+    background-color: var(--bg-hover);
+}
+
+.tab.active {
+    background-color: var(--bg-tab-active);
+    color: var(--fg-active);
+}
+
+.tab.active::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background-color: var(--fg-accent);
+}
+
+/* Иконка вкладки: контейнер для SVG */
+.tab__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: inherit;
+}
+
+.tab__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tab__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+    font-size: 14px;
+    color: var(--fg-muted);
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s, background-color 0.15s;
+}
+
+.tab:hover .tab__close,
+.tab.active .tab__close {
+    opacity: 1;
+}
+
+.tab__close:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--fg-active);
+}
+
+/* ── Содержимое центральной области ── */
+.editor-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    scrollbar-width: thin;
+    scrollbar-gutter: auto;
+}
+
+.editor-content::-webkit-scrollbar {
+    width: 10px;
+}
+
+.editor-content::-webkit-scrollbar-thumb {
+    background-color: rgba(121, 121, 121, 0.4);
+    border-radius: 5px;
+}
+
+.editor-content::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(121, 121, 121, 0.7);
+}
+
+/* ── Панели вкладок ── */
+.tab-panel {
+    display: none;
+}
+
+.tab-panel.active {
+    display: block;
+}
+
+/* ==================================================================
+6. Формы и поля ввода
+================================================================== */
+.input {
+    width: 100%;
+    padding: 6px 10px;
+    background-color: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    color: var(--fg-primary);
+    font-size: var(--font-size);
+    font-family: var(--font-family);
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.input:focus {
+    border-color: var(--border-focus);
+}
+
+.input::placeholder {
+    color: var(--fg-muted);
+}
+
+.input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Поисковая форма: кнопка слева, поле занимает всю оставшуюся ширину */
+.search-form {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+    margin-bottom: 0;
+}
+
+.input--search {
+    padding: 8px 12px;
+    font-size: var(--font-size-lg);
+    flex: 1;
+    min-width: 0;
+    height: 40px;
+}
+
+.search-form .btn--primary {
+    height: 40px;
+    padding: 0 14px;
+    flex-shrink: 0;
+}
+
+select.input {
+    cursor: pointer;
+}
+
+textarea.input {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.form-group {
+    margin-bottom: 14px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--fg-secondary);
+}
+
+/* ── Автодополнение (компонент AutocompleteField) ── */
+.autocomplete-wrapper {
+    position: relative;
+}
+
+.autocomplete-input {
+    width: 100%;
+    padding: 6px 10px;
+    background-color: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    color: var(--fg-primary);
+    font-size: var(--font-size);
+    font-family: var(--font-family);
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.autocomplete-input:focus {
+    border-color: var(--border-focus);
+}
+
+.autocomplete-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.autocomplete-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 200px;
+    overflow-y: auto;
+    background-color: var(--bg-sidebar);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    z-index: 1000;
+}
+
+.autocomplete-item {
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+.autocomplete-item:hover,
+.autocomplete-item--highlighted {
+    background-color: var(--bg-hover);
+}
+
+.autocomplete-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+}
+
+/* Колонка, содержащая код: фиксированная ширина 40px, левое выравнивание */
+.autocomplete-col--narrow {
+    flex: 0 0 40px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+}
+
+/* Колонка, содержащая текст: занимает оставшееся пространство */
+.autocomplete-col--wide {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+}
+
+/* Визуальное выделение применённого фильтра */
+.filter-applied {
+    border-color: #7ec8ff !important;
+    box-shadow: 0 0 0 1px #7ec8ff;
+    color: #7ec8ff;
+}
+
+/* ==================================================================
+7. Кнопки
+================================================================== */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border: none;
+    border-radius: var(--radius);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    font-family: var(--font-family);
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color 0.15s, opacity 0.15s;
+    white-space: nowrap;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn--primary {
+    background-color: var(--bg-button);
+    color: var(--fg-button);
+}
+
+.btn--primary:hover:not(:disabled) {
+    background-color: var(--bg-button-hover);
+}
+
+.btn--danger {
+    background-color: var(--bg-button-danger);
+    color: var(--fg-button);
+}
+
+.btn--danger:hover:not(:disabled) {
+    background-color: var(--bg-button-danger-hover);
+}
+
+.btn--ghost {
+    background: none;
+    color: var(--fg-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.btn--ghost:hover:not(:disabled) {
+    background-color: var(--bg-hover);
+    color: var(--fg-active);
+}
+
+.btn--sm {
+    padding: 3px 8px;
+    font-size: var(--font-size-sm);
+}
+
+.btn--block {
+    width: 100%;
+}
+
+/* ==================================================================
+8. Карточки
+================================================================== */
+.card {
+    background-color: var(--bg-sidebar);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 14px;
+    margin-bottom: 12px;
+}
+
+.card__title {
+    font-size: var(--font-size);
+    font-weight: 600;
+    color: var(--fg-primary);
+    margin-bottom: 10px;
+}
+
+/* ==================================================================
+9. Таблицы
+================================================================== */
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm);
+}
+
+.table th,
+.table td {
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.table th {
+    font-weight: 600;
+    color: var(--fg-secondary);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    user-select: none;
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+.table tr:hover td {
+    background-color: var(--bg-hover);
+}
+
+.table a {
+    color: var(--fg-link);
+    text-decoration: none;
+}
+
+.table a:hover {
+    text-decoration: underline;
+}
+
+/* Первый столбец таблицы результатов поиска: однострочное отображение */
+#search-results-body td:first-child,
+#search-results-wrapper th:first-child {
+    white-space: nowrap;
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ==================================================================
+10. Полоса прогресса загрузки
+================================================================== */
+.download-progress {
+    height: 3px;
+    width: 100%;
+    background-color: var(--bg-input);
+    margin-top: 4px;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.download-progress-bar {
+    height: 100%;
+    width: 0%;
+    background-color: var(--fg-accent);
+    transition: width 0.2s ease;
+}
+
+/* Анимация ожидания подтверждения сохранения */
+.download-progress-bar--pending {
+    animation: download-pending 1.5s ease-in-out infinite;
+}
+
+@keyframes download-pending {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.3;
+    }
+}
+
+/* ==================================================================
+11. Бейджи
+================================================================== */
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.badge--error {
+    background: var(--bg-badge-error);
+    color: var(--fg-error);
+}
+
+.badge--running {
+    background: var(--bg-badge-info);
+    color: var(--fg-info);
+}
+
+.badge--active {
+    background: var(--bg-badge-success);
+    color: var(--fg-success);
+}
+
+.badge--completed {
+    background: var(--bg-badge-success);
+    color: var(--fg-success);
+}
+
+.badge--idle {
+    background: var(--bg-badge-muted);
+    color: var(--fg-secondary);
+}
+
+.badge--interrupted {
+    background: var(--bg-badge-warning);
+    color: var(--fg-warning);
+}
+
+.badge--shutdown {
+    background: var(--bg-badge-muted);
+    color: var(--fg-secondary);
+}
+
+.badge--removed {
+    background: var(--bg-badge-muted);
+    color: var(--fg-secondary);
+}
+
+.badge--deactivated {
+    background: var(--bg-badge-warning);
+    color: var(--fg-warning);
+}
+
+.badge--loading {
+    background: var(--bg-badge-info);
+    color: var(--fg-info);
+}
+
+/* ==================================================================
+12. Алерты
+================================================================== */
+.alert {
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+    font-size: var(--font-size-sm);
+    border: 1px solid transparent;
+}
+
+.alert--error {
+    background-color: rgba(241, 76, 76, 0.1);
+    color: var(--fg-error);
+    border-color: rgba(241, 76, 76, 0.3);
+}
+
+.alert--info {
+    background-color: rgba(55, 148, 255, 0.1);
+    color: var(--fg-info);
+    border-color: rgba(55, 148, 255, 0.3);
+}
+
+/* ==================================================================
+13. Пагинация
+================================================================== */
+.pagination {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
+.pagination a,
+.pagination span {
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    font-size: var(--font-size-sm);
+    text-decoration: none;
+    color: var(--fg-secondary);
+    border: 1px solid var(--border-color);
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.pagination a:hover {
+    background-color: var(--bg-hover);
+    color: var(--fg-active);
+}
+
+.pagination span.current {
+    background-color: var(--bg-button);
+    color: var(--fg-button);
+    border-color: var(--bg-button);
+}
+
+/* ==================================================================
+14. Сниппеты поиска
+================================================================== */
+.snippet {
+    font-size: var(--font-size-sm);
+    color: var(--fg-primary);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.4;
+}
+
+.snippet b {
+    color: var(--fg-accent);
+    font-weight: 600;
+}
+
+/* ==================================================================
+15. Текст документа
+================================================================== */
+.page-text {
+    white-space: pre-wrap;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+    line-height: 1.7;
+    background-color: var(--bg-sidebar);
+    padding: 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-color);
+    max-height: 70vh;
+    overflow-y: auto;
+    color: var(--fg-primary);
+}
+
+/* ==================================================================
+16. Форма входа
+================================================================== */
+.login-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - var(--statusbar-height));
+}
+
+.login-form {
+    width: 100%;
+    max-width: 380px;
+    padding: 24px;
+}
+
+.login-form .form-group {
+    margin-bottom: 14px;
+}
+
+.login-form label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--fg-secondary);
+}
+
+/* ==================================================================
+17. Панель настроек
+================================================================== */
+.settings-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.settings-modal {
+    background-color: var(--bg-sidebar);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    width: 90%;
+    max-width: 900px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.settings-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+}
+
+.settings-modal-header h2 {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--fg-primary);
+    margin: 0;
+}
+
+.settings-close-btn {
+    background: none;
+    border: none;
+    color: var(--fg-muted);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--radius);
+    transition: background-color 0.15s, color 0.15s;
+    line-height: 1;
+}
+
+.settings-close-btn:hover {
+    background-color: var(--bg-hover);
+    color: var(--fg-active);
+}
+
+.settings-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+    scrollbar-width: thin;
+    scrollbar-gutter: auto;
+}
+
+.settings-modal-body::-webkit-scrollbar {
+    width: 10px;
+}
+
+.settings-modal-body::-webkit-scrollbar-thumb {
+    background-color: rgba(121, 121, 121, 0.4);
+    border-radius: 5px;
+}
+
+.settings-modal-body::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(121, 121, 121, 0.7);
+}
+
+.settings-layout {
+    display: flex;
+    min-height: 400px;
+}
+
+.settings-nav {
+    width: 180px;
+    min-width: 180px;
+    border-right: 1px solid var(--border-subtle);
+    padding: 10px 0;
+    flex-shrink: 0;
+}
+
+.settings-nav-item {
+    display: block;
+    width: 100%;
+    padding: 8px 16px;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--fg-secondary);
+    font-size: var(--font-size-sm);
+    font-family: var(--font-family);
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+    border-left: 2px solid transparent;
+}
+
+.settings-nav-item:hover {
+    background-color: var(--bg-hover);
+    color: var(--fg-active);
+}
+
+.settings-nav-item.active {
+    background-color: var(--bg-selected);
+    color: var(--fg-active);
+    border-left-color: var(--fg-accent);
+}
+
+.settings-content {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-gutter: auto;
+}
+
+.settings-content::-webkit-scrollbar {
+    width: 10px;
+}
+
+.settings-content::-webkit-scrollbar-thumb {
+    background-color: rgba(121, 121, 121, 0.4);
+    border-radius: 5px;
+}
+
+.settings-content::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(121, 121, 121, 0.7);
+}
+
+.settings-section {
+    margin-bottom: 20px;
+}
+
+.settings-section h3 {
+    font-size: var(--font-size);
+    font-weight: 600;
+    color: var(--fg-primary);
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-section h4 {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--fg-secondary);
+    margin: 14px 0 8px;
+}
+
+.settings-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm);
+    margin-bottom: 12px;
+}
+
+.settings-table th,
+.settings-table td {
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-table th {
+    font-weight: 600;
+    color: var(--fg-secondary);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.settings-table td.settings-label {
+    width: 220px;
+    color: var(--fg-secondary);
+    font-weight: 500;
+}
+
+.settings-form-group {
+    margin-bottom: 14px;
+}
+
+.settings-form-group label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--fg-secondary);
+}
+
+.settings-form-group input[type="text"],
+.settings-form-group input[type="password"],
+.settings-form-group select {
+    width: 100%;
+    padding: 6px 10px;
+    background-color: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    color: var(--fg-primary);
+    font-size: var(--font-size);
+    font-family: var(--font-family);
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.settings-form-group input:focus,
+.settings-form-group select:focus {
+    border-color: var(--border-focus);
+}
+
+.settings-form-group input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.settings-message {
+    margin-top: 10px;
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    font-size: var(--font-size-sm);
+    display: none;
+}
+
+.settings-message--success {
+    display: block;
+    background-color: rgba(78, 201, 176, 0.1);
+    color: var(--fg-success);
+    border: 1px solid rgba(78, 201, 176, 0.3);
+}
+
+.settings-message--error {
+    display: block;
+    background-color: rgba(241, 76, 76, 0.1);
+    color: var(--fg-error);
+    border: 1px solid rgba(241, 76, 76, 0.3);
+}
+
+.settings-message--info {
+    display: block;
+    background-color: rgba(55, 148, 255, 0.1);
+    color: var(--fg-info);
+    border: 1px solid rgba(55, 148, 255, 0.3);
+}
+
+.settings-progress {
+    width: 100%;
+    height: 6px;
+    background-color: var(--bg-input);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 8px 0;
+}
+
+.settings-progress-bar {
+    height: 100%;
+    background-color: var(--fg-accent);
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+.settings-scan-controls {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.settings-scan-counters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 10px;
+    font-size: var(--font-size-sm);
+    color: var(--fg-secondary);
+}
+
+.settings-scan-counters span {
+    white-space: nowrap;
+}
+
+.settings-scan-counters b {
+    color: var(--fg-primary);
+}
+
+.settings-scan-status {
+    margin-bottom: 10px;
+}
+
+.settings-scan-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: var(--font-size-sm);
+}
+
+.settings-label {
+    color: var(--fg-secondary);
+    font-weight: 500;
+    min-width: 140px;
+}
+
+.settings-value {
+    color: var(--fg-primary);
+}
+
+.settings-file-path {
+    word-break: break-all;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+}
+
+.settings-hint {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--fg-muted);
+}
+
+.settings-empty {
+    padding: 16px;
+    text-align: center;
+    color: var(--fg-muted);
+    font-size: var(--font-size-sm);
+}
+
+.settings-error {
+    padding: 16px;
+    text-align: center;
+    color: var(--fg-error);
+    font-size: var(--font-size-sm);
+}
+
+/* ==================================================================
+18. Утилиты
+================================================================== */
+.text-muted {
+    color: var(--fg-muted);
+}
+
+.text-center {
+    text-align: center;
+}
+
+.mt-1 {
+    margin-top: 4px;
+}
+
+.mt-2 {
+    margin-top: 8px;
+}
+
+.mt-3 {
+    margin-top: 16px;
+}
+
+.mb-1 {
+    margin-bottom: 4px;
+}
+
+.mb-2 {
+    margin-bottom: 8px;
+}
+
+.mb-3 {
+    margin-bottom: 16px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* ==================================================================
+19. Адаптивность
+==================================================================
+При ширине экрана ≤ 768 px уменьшаются размеры иконок через
+переопределение CSS-переменных ``--icon-size``, ``--icon-size-sm``,
+``--icon-size-xs``. Это автоматически масштабирует все иконки
+во всех компонентах без дублирования стилей.
+
+Стрелка раскрытия группы страниц (``--search-expand-icon-size``)
+также уменьшается пропорционально (21 px → 16 px), сохраняя
+соотношение 1.5 к ``--icon-size-xs``.
+================================================================== */
+@media (max-width: 768px) {
+    :root {
+        --icon-size: 20px;
+        --icon-size-sm: 16px;
+        --icon-size-xs: 12px;
+        --search-expand-icon-size: 16px;
+    }
+
+    .sidebar {
+        display: none;
+    }
+
+    .activity-bar {
+        width: 40px;
+        min-width: 40px;
+    }
+
+    .activity-bar__item {
+        width: 100%;
+        height: 40px;
+    }
+
+    .settings-layout {
+        flex-direction: column;
+    }
+
+    .settings-nav {
+        width: 100%;
+        min-width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border-subtle);
+        display: flex;
+        flex-wrap: wrap;
+        padding: 6px;
+    }
+
+    .settings-nav-item {
+        width: auto;
+        border-left: none;
+        border-bottom: 2px solid transparent;
+        padding: 6px 12px;
+    }
+
+    .settings-nav-item.active {
+        border-bottom-color: var(--fg-accent);
+    }
+}
+
+/* ==================================================================
+20. Группировка результатов поиска
+==================================================================
+Стили для сгруппированных результатов: одна строка на документ,
+раскрывающиеся группы страниц. Используется ``colspan`` на ``td``
+внутри обычной ``<tr>`` — это валидная структура HTML.
+
+Анимация раскрытия/сворачивания выполняется через
+``max-height`` и ``opacity``. Значение ``max-height``
+вычисляется в JS через ``scrollHeight`` контейнера, чтобы
+не использовать магические константы.
+
+Порядок сортировки: документы — по ``best_rank``, страницы
+внутри документа — по ``page_number``.
+
+Взаимодействие:
+- Строки с несколькими страницами получают класс ``expandable``
+  (курсор-указатель, кликабельны целиком).
+- Раскрытая строка документа получает класс ``active`` и
+  подсвечивается фоном ``--bg-selected``. Подсветка ячеек
+  задаётся отдельным правилом, так как ``.table tr:hover td``
+  задаёт фон на ``<td>``.
+
+Выравнивание в столбце «Страницы»:
+- Содержимое ячейки (текст «N шт.» + стрелка) выравнивается
+  по центру по вертикали (в один уровень с именем файла в
+  первом столбце) и по левому краю по горизонтали.
+- Кнопка ``.search-expand-btn`` растягивается на всю ширину
+  ячейки, текст «N шт.» остаётся слева, а стрелка
+  ``.search-expand-icon`` — справа (``justify-content:
+  space-between``).
+- Размер стрелки — ``--search-expand-icon-size`` (21 px, на
+  50% больше ``--icon-size-xs`` = 14 px).
+================================================================== */
+
+/* Ячейка с количеством страниц.
+   Центр по вертикали, чтобы уровень совпадал с именем файла.
+   Фиксированная минимальная ширина — чтобы стрелка могла
+   «уехать» вправо и выровняться по правому краю. */
+.search-pages-cell {
+    white-space: nowrap;
+    vertical-align: middle;
+    min-width: var(--search-pages-cell-min-width);
+}
+
+/* Кнопка раскрытия группы страниц.
+   Растягивается на всю ширину ячейки, содержимое распределяется
+   по краям: текст «N шт.» слева, стрелка справа. */
+.search-expand-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    color: var(--fg-secondary);
+    font-family: var(--font-family);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.search-expand-btn:hover {
+    color: var(--fg-active);
+}
+
+.search-expand-btn:focus-visible {
+    outline: 1px solid var(--border-focus);
+    outline-offset: 2px;
+    border-radius: var(--radius);
+}
+
+/* Количество страниц документа (например, «13 шт.») */
+.search-pages-list {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+}
+
+/* Значок-стрелка с анимацией поворота.
+   Размер увеличен на 50% относительно --icon-size-xs
+   (21 px вместо 14 px). Не сжимается при ограниченной ширине. */
+.search-expand-icon {
+    width: var(--search-expand-icon-size);
+    height: var(--search-expand-icon-size);
+    flex-shrink: 0;
+    transition: transform 0.2s ease-out;
+    color: var(--fg-muted);
+}
+
+.search-doc-row[data-expanded="true"] .search-expand-icon {
+    transform: rotate(90deg);
+}
+
+/*
+ * При раскрытии сниппет родительской строки скрывается.
+ * Используется ``visibility: hidden`` (а не ``display: none``),
+ * чтобы сохранить layout таблицы без «схлопывания» строки.
+ */
+.search-doc-row[data-expanded="true"] .search-snippet-cell .snippet {
+    visibility: hidden;
+}
+
+/*
+ * Кликабельные строки документа (документы с несколькими
+ * страницами). Курсор-указатель сигнализирует о возможности
+ * раскрытия по клику в любом месте строки.
+ */
+.search-doc-row.expandable {
+    cursor: pointer;
+}
+
+/*
+ * Подсветка раскрытой (активной) строки документа.
+ *
+ * Фон задаётся на ``<td>``, так как ``.table tr:hover td``
+ * устанавливает фон ячеек при наведении. Правила ниже
+ * обеспечивают единый фон всех ячеек активной строки и
+ * переопределяют hover-эффект.
+ */
+.search-doc-row.active td,
+.search-doc-row[data-expanded="true"] td {
+    background-color: var(--bg-selected);
+}
+
+/* Ячейка-контейнер дочерних строк */
+.search-children-row>.search-children-cell {
+    padding: 0;
+    border: none;
+}
+
+/* Раскрывающийся контейнер с дочерними страницами */
+.search-children-container {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 0.25s ease-out, opacity 0.2s ease-out;
+}
+
+.search-children-container.is-expanded {
+    opacity: 1;
+    /* max-height управляется из JS через scrollHeight */
+}
+
+/* Строка страницы внутри группы */
+.search-page-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 6px 10px 6px var(--search-tree-indent);
+    border-top: 1px solid var(--border-subtle);
+    position: relative;
+}
+
+/* Вертикальная направляющая слева */
+.search-page-row::before {
+    content: "";
+    position: absolute;
+    left: calc(var(--search-tree-indent) / 2 - 1px);
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background-color: var(--border-subtle);
+}
+
+/* Маркер-уголок на последней строке группы */
+.search-page-row:last-child::before {
+    bottom: 50%;
+}
+
+/* Номер страницы в дочерней строке */
+.search-page-number {
+    flex: 0 0 60px;
+    color: var(--fg-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+    padding-top: 2px;
+}
+
+.search-page-row .snippet {
+    flex: 1;
+    min-width: 0;
+}
+
+/* ==================================================================
+21. Пасхалка «большой белый самолет»
+==================================================================
+Декоративная анимация: при определённой комбинации полей
+поиска (см. ``search.js``) на экране пролетает самолёт слева
+направо.
+
+Стили:
+- ``.dds-airplane-easter-egg`` — контейнер, позиционированный
+  фиксированно по центру экрана по вертикали. Ширина контейнера
+  равна ширине окна, чтобы анимация трансформации сдвигала
+  самолёт за пределы экрана.
+- ``.dds-airplane-easter-egg__icon`` — SVG-иконка самолёта
+  размером ``--airplane-size`` (по умолчанию 64 px). Цвет
+  задан напрямую (не наследуется), так как элемент не находится
+  внутри тематизированных контейнеров.
+
+Особенности:
+- ``pointer-events: none`` — анимация не перехватывает клики
+  и не мешает взаимодействию с интерфейсом.
+- ``z-index: 9999`` — самолёт отображается поверх всего
+  содержимого, включая модальные окна и статус-бар.
+- Анимация ``dds-airplane-fly`` длится ``--airplane-duration``
+  (4 s) и совпадает с длительностью удаления элемента в
+  ``search.js`` (``EASTER_EGG_ANIMATION_MS``).
+================================================================== */
+
+.dds-airplane-easter-egg {
+    position: fixed;
+    top: 50%;
+    left: 0;
+    width: 100vw;
+    height: var(--airplane-size);
+    margin-top: calc(var(--airplane-size) / -2);
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    pointer-events: none;
+    z-index: 9999;
+    animation: dds-airplane-fly var(--airplane-duration) linear forwards;
+}
+
+.dds-airplane-easter-egg__icon {
+    width: var(--airplane-size);
+    height: var(--airplane-size);
+    flex-shrink: 0;
+    color: #ffffff;
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+}
+
+/*
+ * Анимация пролёта: самолёт стартует за левым краем окна
+ * и улетает за правый край.
+ *
+ * Используется ``translateX`` на родительском контейнере, что
+ * не мешает позиционированию самого элемента. Ключевые кадры
+ * задают смещение относительно исходного положения (left: 0).
+ */
+@keyframes dds-airplane-fly {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(100vw);
+    }
+}
+
+/* ==================================================================
+22. Предпросмотр документа (рендер и подсветка)
+==================================================================
+Стили растрового просмотра страницы PDF с наложением слоя
+подсветки совпадений. Используется на вкладке документа
+(``document.js``).
+
+Компоненты:
+
+- ``.page-render-container`` — контейнер рендера с нативным
+  скроллом и курсором ``grab`` для панорамирования. Прокрутка
+  обеспечивается родительским ``.editor-content`` — без
+  вложенного ``max-height``, чтобы не создавать двойной
+  скроллбар.
+- ``.page-render-wrapper`` — обёртка для ``<img>`` и overlay.
+  Размеры wrapper определяются размерами ``<img>``, которые
+  задаются через явные ``style.width``/``style.height`` в JS
+  (не через ``transform: scale``), что синхронизирует layout
+  с визуальным отображением.
+- ``.page-render-image`` — PNG-рендер страницы.
+- ``.page-render-overlay`` — слой подсветки поверх ``<img>``
+  с ``pointer-events: none``.
+- ``.page-render-highlight`` — прямоугольник подсветки.
+  Позиционируется в процентах; координаты приходят с сервера
+  в нормализованных единицах ``[0..1]``. Цвет — бирюзовый
+  (``--page-render-highlight-bg``, ``--page-render-highlight-border``).
+- ``.page-render-skeleton`` — скелетон загрузки.
+- ``.page-view-switch`` — переключатель «Рендер / Текст».
+- ``.page-render-switch-disabled`` — стиль заблокированной
+  кнопки переключателя (используется после fallback на текст
+  при HTTP 500 / 504 от эндпоинта рендера).
+- ``.page-render-fallback`` — сообщение о недоступности
+  рендера для страницы.
+- ``.doc-render-controls`` — flex-контейнер для чекбокса
+  «Ротация координат». Размещается между переключателем
+  режимов и метаданными документа.
+- ``.doc-checkbox-label`` — общий стиль обёртки чекбокса
+  (используется и для чекбокса «Ротация координат» внутри
+  ``.doc-render-controls``, и для чекбокса «Навигация по всем
+  страницам» внутри ``.doc-nav-controls``).
+- ``.doc-checkbox-label.is-disabled`` — состояние недоступности
+  чекбокса (нет совпадений у документа).
+- ``.doc-nav-controls`` — flex-контейнер для пагинации слева
+  и чекбокса «Навигация по всем страницам» справа.
+- ``.doc-nav`` — контейнер пагинации.
+
+Принципы:
+- Цвета подсветки и фона скелетона — через CSS-переменные
+  из ``:root``. Фон скелетона использует переменные темы.
+- Нативный скролл: контейнер не ограничивает ``max-height``,
+  высота определяется размером рендера.
+- Панорамирование: обработчики ``mousedown``/``mousemove``/
+  ``mouseup`` и ``contextmenu`` устанавливаются в ``document.js``;
+  CSS предоставляет только визуальное состояние курсора.
+================================================================== */
+
+/* Контейнер рендера. Прокрутка — на родительском
+   ``.editor-content``. Без ``max-height``. Курсор ``grab`` —
+   визуальная подсказка о возможности панорамирования
+   правой кнопкой мыши. */
+.page-render-container {
+    overflow: auto;
+    position: relative;
+    background-color: var(--bg-editor);
+    padding: 8px;
+    cursor: grab;
+}
+
+/* Состояние панорамирования: обработчик ``mousedown`` в
+   ``document.js`` добавляет класс ``.is-panning`` на время
+   drag, что переключает курсор на ``grabbing``. */
+.page-render-container.is-panning {
+    cursor: grabbing;
+}
+
+/* Обёртка для <img> и overlay. Размеры определяются размерами
+   <img>, которые задаются через явные ``style.width``/
+   ``style.height`` в JS. */
+.page-render-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+/* Растровый рендер страницы.
+   Размеры (ширина и высота) управляются inline-стилями из
+   ``document.js``: fit-width или пользовательский zoom.
+   До применения JS-логики браузер может отрисовать <img>
+   в натуральном размере; для защиты от flash на время
+   загрузки применяется ``img.style.maxWidth = "100%"``
+   (устанавливается в JS до вставки в DOM). */
+.page-render-image {
+    display: block;
+    max-width: none;
+    background-color: #ffffff;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+/* Слой подсветки поверх изображения. */
+.page-render-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Прямоугольник подсветки совпадения.
+   Цвет — бирюзовый; значения переменных определены в ``:root``. */
+.page-render-highlight {
+    position: absolute;
+    background-color: var(--page-render-highlight-bg);
+    border: 1px solid var(--page-render-highlight-border);
+    border-radius: 2px;
+    box-sizing: border-box;
+}
+
+/* Скелетон загрузки рендера. */
+.page-render-skeleton {
+    width: 100%;
+    min-height: var(--page-render-skeleton-min-height);
+    background: linear-gradient(90deg,
+            var(--bg-input) 25%,
+            var(--bg-hover) 50%,
+            var(--bg-input) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-pulse 1.5s infinite;
+    border-radius: var(--radius);
+}
+
+@keyframes skeleton-pulse {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* Переключатель режима просмотра («Рендер» / «Текст»).
+   Вставляется ``ViewModeManager.installSwitcher`` в контейнер
+   ``#doc-view-switch-{docId}``. */
+.page-view-switch {
+    display: inline-flex;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.page-view-switch button {
+    padding: 4px 10px;
+    background-color: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    color: var(--fg-secondary);
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    font-family: var(--font-family);
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.page-view-switch button:hover:not(:disabled) {
+    background-color: var(--bg-hover);
+    color: var(--fg-active);
+}
+
+.page-view-switch button.active {
+    background-color: var(--bg-button);
+    color: var(--fg-button);
+    border-color: var(--bg-button);
+}
+
+.page-view-switch button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Заблокированный переключатель на «Рендер» после fallback
+   на текстовый режим. Дополняет атрибут ``disabled``. */
+.page-render-switch-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Сообщение о недоступности рендера на странице. */
+.page-render-fallback {
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    border-radius: var(--radius);
+    background-color: rgba(55, 148, 255, 0.1);
+    color: var(--fg-info);
+    border: 1px solid rgba(55, 148, 255, 0.3);
+    font-size: var(--font-size-sm);
+}
+
+/* ── Блок контролов рендера ──
+   Размещается между переключателем режимов (``.page-view-switch``)
+   и метаданными документа. Содержит чекбокс «Ротация координат». */
+.doc-render-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+/* ── Общий стиль обёртки чекбокса вкладки документа ──
+   Используется для чекбокса «Ротация координат» (внутри
+   ``.doc-render-controls``) и для чекбокса «Навигация по всем
+   страницам» (внутри ``.doc-nav-controls``). */
+.doc-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--font-size-sm);
+    color: var(--fg-secondary);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.doc-checkbox-label input[type="checkbox"] {
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.doc-checkbox-label input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* Состояние недоступности чекбокса: устанавливается в JS,
+   когда у документа нет совпадений (``termsByPage`` пуст) или
+   подсветка не запрашивается. Дополняет атрибут ``disabled``
+   для визуальной согласованности в браузерах без поддержки
+   ``:has()``. */
+.doc-checkbox-label.is-disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* ── Панель навигации по страницам ──
+   Размещается на вкладке документа рядом с пагинацией.
+   Используется в разметке, создаваемой ``app.js::openDocumentTab``. */
+
+/* Flex-контейнер: пагинация слева, чекбокс справа.
+   ``flex-wrap: wrap`` обеспечивает перенос чекбокса под
+   пагинацию на узких экранах. */
+.doc-nav-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+/* Контейнер пагинации. Занимает всё доступное пространство
+   между левым краем и чекбоксом. */
+.doc-nav {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* В контексте ``.doc-nav`` пагинация прижата к левому краю,
+   чтобы чекбокс справа выглядел сбалансированно (переопределяет
+   глобальный ``.pagination { justify-content: center }``). */
+.doc-nav .pagination {
+    justify-content: flex-start;
+    margin-top: 0;
+}

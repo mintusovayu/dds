@@ -1,0 +1,244 @@
+# =====================================================================
+# Deep Doc Search — источник истины для архитектурных контрактов.
+#
+# Назначение:
+#   Единая точка описания контрактов import-linter и жизненного
+#   цикла их ослаблений. Из этого файла генерируется `.importlinter`
+#   (см. tools/generate_importlinter_config.py); отсюда же читает
+#   lifecycle-проверка (tools/check_import_linter_exceptions.py).
+#
+#   Ручные правки `.importlinter` будут потеряны при следующей
+#   регенерации. Все изменения вносятся ТОЛЬКО здесь.
+#
+# Регенерация .importlinter после правки файла:
+#   python tools/generate_importlinter_config.py
+#
+# Проверка жизненного цикла ослаблений:
+#   python tools/check_import_linter_exceptions.py
+#
+# Проверка актуальности .importlinter (CI):
+#   python tools/generate_importlinter_config.py --check
+#
+# Схема контракта:
+#   name:               обязательное, [A-Za-z0-9_-]+
+#   description:        человекочитаемое название для отчёта
+#   type:               пока поддерживается только `forbidden`
+#   source_modules:     список модулей-источников (непустой)
+#   forbidden_modules:  список запрещённых целей (непустой)
+#   ignore_imports:     опциональный список исключений формата
+#                       "source -> target" (стрелка — обязательна)
+#
+# Схема записи жизненного цикла (exception_lifecycle):
+#   Каждый элемент `ignore_imports` ЛЮБОГО контракта обязан иметь
+#   соответствующую запись здесь. Соответствие — по паре
+#   (contract, import).
+#
+#   contract:           имя контракта (name)
+#   import:             значение из ignore_imports (точная строка)
+#   permanent:          true — неустранимое ослабление;
+#   phase_removed_by:   номер фазы плана рефакторинга, к началу
+#                       которой ослабление должно быть удалено
+#                       (взаимоисключающее с permanent)
+#   rationale:          обязательно для permanent — обоснование
+#
+# См. также: docs/architecture-decisions/README.md (правила
+#            жизненного цикла), ADR-004, ADR-005.
+# =====================================================================
+
+
+# ---------------------------------------------------------------------
+# Корневые пакеты проекта.
+# ---------------------------------------------------------------------
+root_packages:
+  - dds_core
+  - dds_web
+
+
+# ---------------------------------------------------------------------
+# Архитектурные контракты.
+#
+# Пять контрактов покрывают все архитектурные запреты DDS:
+#   1. domain-isolation         — domain не зависит ни от чего, кроме stdlib.
+#   2. application-isolation    — application работает через абстракции domain.
+#   3. infrastructure-isolation — infrastructure не знает о presentation.
+#   4. subprocess-tasks-isolation — composition root для subprocess-задач
+#                                   доступен только из dds_web.lifespan.
+#   5. subprocess-tasks-shallow   — subprocess_tasks не тянет stateful-объекты
+#                                   infrastructure и domain-абстракции.
+#
+# Обоснование выбора forbidden-контрактов вместо layers-контрактов:
+# infrastructure импортирует отдельные shared-helper'ы из application
+# (например, MetadataFilterQueryBuilder) — это допустимо и не должно
+# ложно срабатывать. Forbidden-контракты описывают точные запреты.
+# ---------------------------------------------------------------------
+contracts:
+
+  # -------------------------------------------------------------------
+  # Contract 1: domain-isolation
+  #
+  # Domain — фундамент архитектуры. Содержит модели, интерфейсы,
+  # события, конфигурацию по умолчанию, правила нормализации текста,
+  # план индексации. Не зависит ни от чего, кроме стандартной
+  # библиотеки Python.
+  # -------------------------------------------------------------------
+  - name: domain-isolation
+    description: "Domain layer isolation"
+    type: forbidden
+    source_modules:
+      - dds_core.domain
+    forbidden_modules:
+      - dds_core.application
+      - dds_core.infrastructure
+      - dds_core.subprocess_tasks
+      - dds_web
+
+
+  # -------------------------------------------------------------------
+  # Contract 2: application-isolation
+  #
+  # Application оркестрирует домен и не знает о конкретных
+  # инфраструктурных реализациях. Все зависимости передаются через
+  # DI в composition root (dds_web.lifespan).
+  #
+  # Запрет на dds_core.infrastructure — ключевой для Фазы 5
+  # (DocumentIndexPlan): SQL-строки не должны протекать в application.
+  # -------------------------------------------------------------------
+  - name: application-isolation
+    description: "Application layer isolation"
+    type: forbidden
+    source_modules:
+      - dds_core.application
+    forbidden_modules:
+      - dds_core.infrastructure
+      - dds_core.subprocess_tasks
+      - dds_web
+
+
+  # -------------------------------------------------------------------
+  # Contract 3: infrastructure-isolation
+  #
+  # Infrastructure реализует интерфейсы domain, но не знает о
+  # presentation layer.
+  #
+  # Примечание: infrastructure → application НЕ запрещён этим
+  # контрактом. Например, FTS5SearchBackend импортирует
+  # MetadataFilterQueryBuilder из application — это допустимо,
+  # так как класс является helper'ом построения SQL-условий
+  # фильтрации, а не реализацией конкретного интерфейса.
+  # -------------------------------------------------------------------
+  - name: infrastructure-isolation
+    description: "Infrastructure layer isolation"
+    type: forbidden
+    source_modules:
+      - dds_core.infrastructure
+    forbidden_modules:
+      - dds_core.subprocess_tasks
+      - dds_web
+
+
+  # -------------------------------------------------------------------
+  # Contract 4: subprocess-tasks-isolation
+  #
+  # dds_core.subprocess_tasks — узкий composition root для subprocess-
+  # задач, выполняемых через ProcessTaskRunner (см. ADR-004).
+  #
+  # Пакет легально импортирует application и infrastructure: worker'ы
+  # создают PyMuPDFTextExtractor локально в дочернем процессе и
+  # вызывают application-логику (build_index_plan). Это единственное
+  # место в проекте, где такое сочетание разрешено.
+  #
+  # Единственная точка доступа — dds_web.lifespan (composition root
+  # основного процесса). Исключение зафиксировано в
+  # ignore_imports и в exception_lifecycle (см. ниже).
+  #
+  # Любое расширение allow-list — через ADR с обоснованием.
+  # -------------------------------------------------------------------
+  - name: subprocess-tasks-isolation
+    description: "Subprocess tasks isolation"
+    type: forbidden
+    source_modules:
+      - dds_core.domain
+      - dds_core.application
+      - dds_core.infrastructure
+      - dds_web
+    forbidden_modules:
+      - dds_core.subprocess_tasks
+    ignore_imports:
+      # Composition root: единственная точка доступа к subprocess-
+      # worker'ам. Обоснование — в exception_lifecycle ниже и в ADR-004.
+      - "dds_web.lifespan -> dds_core.subprocess_tasks.pdf_workers"
+
+
+  # -------------------------------------------------------------------
+  # Contract 5: subprocess-tasks-shallow
+  #
+  # subprocess_tasks — узкий пакет. Запрет на импорт stateful-объектов
+  # infrastructure (event_bus, sqlite_adapter, сам runner) и
+  # domain-абстракций (events, interfaces, config).
+  #
+  # Обоснование: forkserver-контекст изолирует состояние основного
+  # процесса (см. ADR-004, раздел «Ограничения forkserver»).
+  # Попытка передать event_bus или открытую БД в worker приведёт
+  # к неявным ошибкам или утечкам. Пакет должен оставаться простым:
+  # принимает параметры, создаёт зависимости локально.
+  #
+  # Разрешено (не перечислено в forbidden):
+  #   - dds_core.domain.models      (type hints: WordIndex, WordEntry)
+  #   - dds_core.domain.index_plan  (type hints: DocumentIndexPlan)
+  #   - dds_core.application.*      (build_index_plan)
+  #   - dds_core.infrastructure.pymupdf_text_extractor
+  #     (создание экстрактора в worker'е)
+  # -------------------------------------------------------------------
+  - name: subprocess-tasks-shallow
+    description: "Subprocess tasks shallow imports"
+    type: forbidden
+    source_modules:
+      - dds_core.subprocess_tasks
+    forbidden_modules:
+      - dds_web
+      - dds_core.domain.events
+      - dds_core.domain.interfaces
+      - dds_core.domain.config
+      - dds_core.infrastructure.event_bus
+      - dds_core.infrastructure.sqlite_adapter
+      - dds_core.infrastructure.process_task_runner
+
+
+# ---------------------------------------------------------------------
+# Жизненный цикл ослаблений контрактов.
+#
+# Каждый элемент `ignore_imports` любого контракта ОБЯЗАН иметь
+# ровно одну соответствующую запись здесь. Соответствие проверяется
+# инструментом tools/check_import_linter_exceptions.py.
+#
+# Поля:
+#   contract:          имя контракта (name из блока contracts)
+#   import:            точная строка из ignore_imports
+#   permanent:         true — ослабление неустранимо (требует rationale)
+#   phase_removed_by:  номер фазы, к началу которой ослабление
+#                      должно быть удалено (взаимоисключающее с permanent)
+#   rationale:         текстовое обоснование (обязательно для permanent)
+#
+# Текущая фаза проекта читается из
+# docs/architecture-decisions/current_phase.txt.
+# ---------------------------------------------------------------------
+exception_lifecycle:
+
+  # Composition root для subprocess_tasks.
+  #
+  # Ослабление неустранимо: подсистема subprocess-задач не может
+  # существовать без точки сборки (composition root), которая
+  # передаёт worker'ы из infrastructure в presentation через DI.
+  # Эта точка — dds_web.lifespan, единственное разрешённое место
+  # импорта subprocess_tasks. Любая альтернатива (передача worker'ов
+  # через pickle из другого слоя, monkey-patching, entry-point'ы)
+  # либо ломает слои, либо усложняет архитектуру без выгоды.
+  - contract: subprocess-tasks-isolation
+    import: "dds_web.lifespan -> dds_core.subprocess_tasks.pdf_workers"
+    permanent: true
+    rationale: >
+      Composition root: единственная точка доступа к subprocess-
+      worker'ам из основного процесса. Обоснование и рассмотренные
+      альтернативы — в ADR-004 (ProcessTaskRunner). Ослабление
+      неустранимо: без него подсистема subprocess-задач не может
+      быть собрана без нарушения более фундаментальных контрактов.

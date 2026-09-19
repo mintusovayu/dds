@@ -1,0 +1,67 @@
+/* ==================================================================
+Deep Doc Search — тема «Nord» (приглушённый сине-серый).
+Вдохновлена популярной палитрой Nord с пониженной насыщенностью.
+Хорошо подходит для длительной работы, минимизирует усталость глаз.
+
+Механизм переключения тем:
+Активная тема подключается как отдельный файл через
+``<link id="theme-stylesheet">`` в ``base.html``. Смена темы
+выполняется через ``ThemeManager.applyTheme()``, который
+подменяет ``href`` у этого элемента. Атрибут ``data-theme``
+на ``<html>`` не используется. Единственный рабочий
+селектор — ``:root``.
+================================================================== */
+:root {
+    /* ── Фоны ── */
+    --bg-activitybar: #2E3440;
+    --bg-sidebar: #2B303B;
+    --bg-editor: #242933;
+    --bg-tabbar: #2B303B;
+    --bg-tab-active: #242933;
+    --bg-tab-inactive: #363C48;
+    --bg-statusbar: #3B4252;
+    --bg-input: #3B4252;
+    --bg-hover: #3B4252;
+    --bg-selected: #434C5E;
+    --bg-button: #5E81AC;
+    --bg-button-hover: #7393B8;
+    --bg-button-danger: #BF616A;
+    --bg-button-danger-hover: #CE7480;
+
+    /* ── Полупрозрачные фоны бейджей ── */
+    --bg-badge-success: #A3BE8C33;
+    --bg-badge-error: #BF616A33;
+    --bg-badge-warning: #EBCB8B33;
+    --bg-badge-info: #81A1C133;
+    --bg-badge-muted: #4C566A 33;
+
+    /* ── Цвета текста и элементов ── */
+    --fg-primary: #ECEFF4;
+    --fg-secondary: #D8DEE9;
+    --fg-muted: #7B8394;
+    --fg-active: #FFFFFF;
+    --fg-link: #88C0D0;
+    --fg-accent: #81A1C1;
+    --fg-success: #A3BE8C;
+    --fg-error: #BF616A;
+    --fg-warning: #EBCB8B;
+    --fg-info: #88C0D0;
+    --fg-statusbar: #ECEFF4;
+    --fg-button: #FFFFFF;
+
+    /* ── Границы ── */
+    --border-color: #434C5E;
+    --border-focus: #88C0D0;
+    --border-subtle: #3B4252;
+}
+
+.status-bar__dot--running {
+    background-color: #88C0D0;
+    animation: pulse 1.5s infinite;
+}
+
+.filter-applied {
+    border-color: #88C0D0 !important;
+    box-shadow: 0 0 0 1px #88C0D0;
+    color: #88C0D0;
+}
