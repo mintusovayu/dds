@@ -11,6 +11,7 @@ venv/
 .mypy_cache/
 .ruff_cache/
 *.log
+*.log.*
 *.prof
 *.xlsx
 *.csv
@@ -34,6 +35,7 @@ debug_output/
 data/input/private/*
 !data/input/private/.gitkeep
 config.json
+tests/smoke/smoke-config.json
 
 # Private markup
 data/markup/private/*
@@ -55,6 +57,11 @@ data/output/debug/*
 
 # Local performance baselines
 tests/performance/baselines/*.local.json
+
+# Smoke-тесты: артефакты прогона
+tests/smoke/smoke-config.json
+tests/smoke/app.log
+tests/smoke/artifacts/
 
 # IDE and OS
 .idea/

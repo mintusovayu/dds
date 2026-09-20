@@ -41,6 +41,13 @@ Pytest fixtures для smoke-тестов Deep Doc Search.
 приложение запускается с изолированным smoke-конфигом. Порт 8765
 изолирован от production (8000).
 
+HTTP-запросы к приложению выполняются через :class:`LocalHTTP` —
+клиент с ``ProxyHandler({})``, игнорирующий системные переменные
+окружения (``ALL_PROXY``, ``HTTP_PROXY``, ``HTTPS_PROXY``).
+Это делает smoke-тесты герметичными в любой сетевой среде:
+приложение слушает ``127.0.0.1``, и запросы к нему не должны
+идти через внешний прокси.
+
 Порядок teardown
 ----------------
 Зависимости fixtures задают порядок:
@@ -187,6 +194,137 @@ _SAFE_NAME_PATTERN = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
 # =====================================================================
+# HTTP-клиент для локального приложения
+# =====================================================================
+
+
+class LocalHTTP:
+    """HTTP-клиент для запросов к локальному приложению smoke-тестов.
+
+    Приложение smoke-тестов слушает на ``127.0.0.1``. Если в системе
+    настроен прокси (``ALL_PROXY=socks5h://...``, ``HTTP_PROXY``,
+    ``HTTPS_PROXY``), стандартный :func:`urllib.request.urlopen`
+    пытается идти через него и падает с
+    ``unknown url type: socks5h`` — библиотека ``urllib`` не
+    поддерживает SOCKS5 без ``PySocks``.
+
+    Класс инкапсулирует :class:`urllib.request.OpenerDirector` с
+    пустым ``ProxyHandler``, который игнорирует переменные
+    окружения. Все HTTP-запросы smoke-тестов к приложению должны
+    идти через этот клиент, чтобы smoke-инфраструктура была
+    герметичной и не зависела от сетевых настроек конкретной
+    машины.
+
+    Примечание:
+        Запросы к ``127.0.0.1`` концептуально не должны идти
+        через прокси. ``ProxyHandler({})`` — явное выражение этого
+        инварианта на уровне кода, а не на уровне переменных
+        окружения.
+    """
+
+    def __init__(self) -> None:
+        """Создаёт opener без прокси.
+
+        Операции:
+
+        +---+-----------------------------------------------------+
+        | № | Описание                                            |
+        +===+=====================================================+
+        | 1 | ``build_opener(ProxyHandler({}))`` — создание       |
+        |   | opener'а, игнорирующего переменные окружения        |
+        |   | (``ALL_PROXY``, ``HTTP_PROXY``, ``HTTPS_PROXY``).   |
+        +---+-----------------------------------------------------+
+        """
+        self._opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}),
+        )
+
+    def get_json(self, url: str, timeout: float = 5.0) -> dict[str, Any]:
+        """GET-запрос с JSON-ответом.
+
+        Операции:
+
+        +---+-----------------------------------------------------+
+        | № | Описание                                            |
+        +===+=====================================================+
+        | 1 | Открытие URL через ``self._opener`` (без прокси).   |
+        +---+-----------------------------------------------------+
+        | 2 | Чтение тела ответа в UTF-8.                         |
+        +---+-----------------------------------------------------+
+        | 3 | Разбор JSON через ``json.loads``.                   |
+        +---+-----------------------------------------------------+
+        | 4 | Возврат словаря.                                    |
+        +---+-----------------------------------------------------+
+
+        Args:
+            url: URL.
+            timeout: Таймаут в секундах.
+
+        Returns:
+            Десериализованный JSON-ответ.
+
+        Raises:
+            urllib.error.HTTPError: Если сервер вернул статус
+                отличный от 200.
+            urllib.error.URLError: При ошибке соединения.
+            json.JSONDecodeError: Если тело ответа не является
+                корректным JSON.
+        """
+        with self._opener.open(url, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def post_json(
+        self,
+        url: str,
+        payload: dict[str, Any],
+        timeout: float = 10.0,
+    ) -> dict[str, Any]:
+        """POST-запрос с JSON-телом и JSON-ответом.
+
+        Операции:
+
+        +---+-----------------------------------------------------+
+        | № | Описание                                            |
+        +===+=====================================================+
+        | 1 | Сериализация ``payload`` в JSON и кодирование UTF-8.|
+        +---+-----------------------------------------------------+
+        | 2 | Создание ``urllib.request.Request`` с методом POST  |
+        |   | и заголовком ``Content-Type: application/json``.    |
+        +---+-----------------------------------------------------+
+        | 3 | Отправка через ``self._opener`` (без прокси).       |
+        +---+-----------------------------------------------------+
+        | 4 | Разбор JSON-ответа.                                 |
+        +---+-----------------------------------------------------+
+        | 5 | Возврат словаря.                                    |
+        +---+-----------------------------------------------------+
+
+        Args:
+            url: URL.
+            payload: Данные для отправки.
+            timeout: Таймаут в секундах.
+
+        Returns:
+            Десериализованный JSON-ответ.
+
+        Raises:
+            urllib.error.HTTPError: Если сервер вернул статус
+                отличный от 200.
+            urllib.error.URLError: При ошибке соединения.
+            json.JSONDecodeError: Если тело ответа не является
+                корректным JSON.
+        """
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with self._opener.open(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+
+# =====================================================================
 # Приватные helpers
 # =====================================================================
 
@@ -327,6 +465,7 @@ def _wait_for_ready(
     ready_url: str,
     timeout: float,
     log_path: Path,
+    http: LocalHTTP,
 ) -> None:
     """Ожидает готовности приложения через polling HTTP.
 
@@ -335,11 +474,18 @@ def _wait_for_ready(
     диагностикой (код возврата + хвост лога). При истечении
     таймаута — падение с последней ошибкой соединения + хвост лога.
 
+    HTTP-проверка выполняется через :class:`LocalHTTP` — opener
+    без прокси. Это устраняет падение с
+    ``unknown url type: socks5h`` при наличии переменной
+    ``ALL_PROXY`` (и аналогичных) в окружении: приложение слушает
+    ``127.0.0.1``, и запросы к нему не должны идти через прокси.
+
     Args:
         proc: Процесс приложения.
         ready_url: URL для polling.
         timeout: Таймаут ожидания в секундах.
         log_path: Путь к логу приложения.
+        http: HTTP-клиент без прокси.
 
     Raises:
         RuntimeError: Если приложение не готово за отведённое время
@@ -355,12 +501,19 @@ def _wait_for_ready(
                 f"Приложение завершилось с кодом {proc.returncode} "
                 f"до готовности. Хвост лога:\n{tail}"
             )
-        # 2. HTTP-проверка.
+        # 2. HTTP-проверка через no-proxy opener (см. LocalHTTP).
+        #    get_json используется вместо прямой проверки status,
+        #    чтобы сохранить диагностическое сообщение об ошибке
+        #    в last_error при недоступности приложения.
         try:
-            with urllib.request.urlopen(ready_url, timeout=1.0) as resp:
-                if resp.status == 200:
-                    return
-        except (urllib.error.URLError, ConnectionError, OSError) as exc:
+            http.get_json(ready_url, timeout=1.0)
+            return
+        except (
+            urllib.error.URLError,
+            ConnectionError,
+            OSError,
+            json.JSONDecodeError,
+        ) as exc:
             last_error = str(exc)
         time.sleep(_READY_POLL_INTERVAL_SECONDS)
 
@@ -534,7 +687,25 @@ def smoke_credentials() -> dict[str, str]:
 
 
 @pytest.fixture(scope="session")
-def dds_app_server(_smoke_config_file: Path) -> Iterator[str]:
+def local_http() -> LocalHTTP:
+    """HTTP-клиент без прокси для запросов к локальному приложению.
+
+    Единственный источник истины для HTTP-запросов smoke-тестов
+    к приложению: игнорирует системные прокси (см. :class:`LocalHTTP`),
+    что делает smoke-инфраструктуру герметичной в любой сетевой
+    среде.
+
+    Returns:
+        Session-scoped экземпляр :class:`LocalHTTP`.
+    """
+    return LocalHTTP()
+
+
+@pytest.fixture(scope="session")
+def dds_app_server(
+    _smoke_config_file: Path,
+    local_http: LocalHTTP,
+) -> Iterator[str]:
     """Запускает приложение DDS как subprocess и ждёт готовности.
 
     Последовательность:
@@ -552,6 +723,7 @@ def dds_app_server(_smoke_config_file: Path) -> Iterator[str]:
 
     Args:
         _smoke_config_file: Путь к smoke-конфигу.
+        local_http: HTTP-клиент без прокси для polling'а готовности.
 
     Yields:
         Базовый URL приложения (например, ``http://127.0.0.1:8765``).
@@ -583,7 +755,7 @@ def dds_app_server(_smoke_config_file: Path) -> Iterator[str]:
 
     try:
         # 3. Ожидание готовности.
-        _wait_for_ready(proc, ready_url, timeout, _APP_LOG_PATH)
+        _wait_for_ready(proc, ready_url, timeout, _APP_LOG_PATH, local_http)
     except Exception:
         _terminate_process(proc)
         log_fh.close()

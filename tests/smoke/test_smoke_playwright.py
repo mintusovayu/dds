@@ -46,6 +46,11 @@ subprocess, headless Chromium эмулирует пользовательски�
   изолированном ``context`` (свои cookies и localStorage).
 - **Бирюзовая подсветка.** Проверяется через наличие элементов
   ``.page-render-highlight`` в overlay-слое (см. ``base.css``).
+- **HTTP-запросы к приложению — через** :class:`~tests.smoke.conftest.LocalHTTP`.
+  Прямые запросы к ``127.0.0.1`` не должны идти через системный
+  прокси (``ALL_PROXY`` и др.); клиент ``local_http`` игнорирует
+  переменные окружения и делает seeding/ожидание результата
+  герметичным.
 
 Запуск
 ------
@@ -85,7 +90,6 @@ from __future__ import annotations
 import json
 import time
 import urllib.parse
-import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -125,54 +129,6 @@ _HIGHLIGHT_TIMEOUT_MS = 15000
 # =====================================================================
 
 
-def _get_json(url: str, timeout: float = 5.0) -> dict[str, Any]:
-    """Синхронно читает JSON с URL через stdlib urllib.
-
-    Используется вместо Playwright API (который работает с DOM),
-    потому что smoke-сценарии предполагают прямые REST-вызовы для
-    seeding документа.
-
-    Args:
-        url: Полный URL.
-        timeout: Таймаут в секундах.
-
-    Returns:
-        Десериализованный JSON.
-
-    Raises:
-        urllib.error.URLError: При сетевой ошибке.
-        json.JSONDecodeError: При некорректном ответе.
-    """
-    with urllib.request.urlopen(url, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
-
-
-def _post_json(url: str, payload: dict[str, Any], timeout: float = 10.0) -> dict[str, Any]:
-    """Синхронно отправляет POST с JSON-телом через stdlib urllib.
-
-    Args:
-        url: Полный URL.
-        payload: Данные для отправки.
-        timeout: Таймаут в секундах.
-
-    Returns:
-        Десериализованный JSON-ответ.
-
-    Raises:
-        urllib.error.URLError: При сетевой ошибке.
-        json.JSONDecodeError: При некорректном ответе.
-    """
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        method="POST",
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
-
-
 def _generate_smoke_pdf(path: Path) -> None:
     """Генерирует минимальный PDF-документ для smoke-тестов.
 
@@ -209,6 +165,7 @@ def _generate_smoke_pdf(path: Path) -> None:
 
 
 def _wait_for_search_hit(
+    http: Any,
     base_url: str,
     query: str,
     timeout: float = _SCAN_READY_TIMEOUT_SECONDS,
@@ -219,7 +176,14 @@ def _wait_for_search_hit(
     за отведённое время документ не появился — падение с
     диагностическим сообщением.
 
+    HTTP-запросы выполняются через ``http`` — экземпляр
+    :class:`~tests.smoke.conftest.LocalHTTP`, который игнорирует
+    системные прокси. Параметр типизирован как ``Any``, чтобы
+    избежать импорта ``LocalHTTP`` из ``conftest`` (относительные
+    импорты в пакете smoke могут быть проблематичны).
+
     Args:
+        http: HTTP-клиент без прокси (``LocalHTTP``).
         base_url: Базовый URL приложения.
         query: Поисковый запрос.
         timeout: Таймаут в секундах.
@@ -233,7 +197,7 @@ def _wait_for_search_hit(
     last_error: str = "нет попыток"
     while time.monotonic() < deadline:
         try:
-            data = _get_json(url)
+            data = http.get_json(url)
             if int(data.get("total", 0)) > 0:
                 return
         except (OSError, ValueError) as exc:
@@ -270,6 +234,7 @@ def smoke_config_file(_smoke_config_file: Path) -> Path:
 def seeded_document(
     dds_app_server: str,
     smoke_config_file: Path,
+    local_http: Any,
 ) -> dict[str, str]:
     """Создаёт PDF, сканирует его через API, возвращает метаданные.
 
@@ -294,9 +259,15 @@ def seeded_document(
     выполняется один раз, документ переиспользуется всеми тестами,
     которым он нужен.
 
+    HTTP-запросы выполняются через ``local_http`` — клиент без
+    прокси (см. :class:`~tests.smoke.conftest.LocalHTTP`). Это
+    устраняет падение с ``unknown url type: socks5h`` при наличии
+    переменной ``ALL_PROXY`` в окружении.
+
     Args:
         dds_app_server: Базовый URL приложения.
         smoke_config_file: Путь к smoke-конфигу.
+        local_http: HTTP-клиент без прокси (``LocalHTTP`` из conftest).
 
     Returns:
         Словарь с ключами ``doc_id``, ``file_name``, ``search_term``.
@@ -314,13 +285,15 @@ def seeded_document(
     _generate_smoke_pdf(pdf_path)
 
     # 3. Запуск сканирования.
-    _post_json(f"{dds_app_server}/api/scan/start", {})
+    local_http.post_json(f"{dds_app_server}/api/scan/start", {})
 
     # 4. Ожидание готовности документа в поиске.
-    _wait_for_search_hit(dds_app_server, _PDF_SEARCH_TERM)
+    _wait_for_search_hit(local_http, dds_app_server, _PDF_SEARCH_TERM)
 
     # 5. Получение doc_id.
-    data = _get_json(f"{dds_app_server}/api/search?q={urllib.parse.quote(_PDF_SEARCH_TERM)}")
+    data = local_http.get_json(
+        f"{dds_app_server}/api/search?q={urllib.parse.quote(_PDF_SEARCH_TERM)}"
+    )
     results = data.get("results", [])
     assert results, "Результаты поиска пусты после успешного seeding"
     doc = results[0]
@@ -543,6 +516,16 @@ def test_search_form_submits_with_empty_query(admin_page: Page) -> None:
     (переходит в состояние загрузки или отображает результаты),
     а не падает и не показывает необработанную ошибку.
 
+    Ожидание завершения запроса:
+    ``wait_for_selector`` со ``state="hidden"`` — индикатор
+    ``#search-loading`` изначально имеет класс ``.hidden``
+    (``display: none !important`` в ``base.css``). Использование
+    ``state="hidden"`` ожидает перехода элемента в это состояние
+    (то есть вызова ``SearchRenderer.hideLoading()``), а не его
+    видимости. Селектор ``#search-loading.hidden`` без ``state``
+    концептуально не может сработать: элемент, соответствующий
+    такому селектору, обязан быть невидимым.
+
     Args:
         admin_page: Авторизованная страница.
     """
@@ -550,9 +533,10 @@ def test_search_form_submits_with_empty_query(admin_page: Page) -> None:
     admin_page.click("#search-form button[type=submit]")
 
     # Приложение не должно показывать error-alert.
-    # Ждём завершения запроса (loading скрывается, results/no-results показан).
+    # Ждём завершения запроса: индикатор загрузки скрывается.
     admin_page.wait_for_selector(
-        "#search-loading.hidden",
+        "#search-loading",
+        state="hidden",
         timeout=5000,
     )
     error = admin_page.locator("#search-error")

@@ -33,6 +33,10 @@ markers = [
 ]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# Flat-layout: пакеты dds_core/, dds_web/, tools/ лежат в корне репозитория.
+# Без этого pytest не добавляет корень в sys.path, и импорты dds_core.*
+# падают с ModuleNotFoundError. Параметр появился в pytest 7.0.
+pythonpath = ["."]
 
 
 # ---------------------------------------------------------------------
