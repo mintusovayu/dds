@@ -25,6 +25,23 @@ REST API для веб-интерфейса DDS.
 Таймауты блокирующих операций (скорректированный план):
 Все критичные блокирующие операции обёрнуты в ``run_with_timeout``.
 
+Опциональные зависимости ``APIContext`` и хелпер ``_require_event_bus``
+(скорректированный план по типизации):
+
+``APIContext.event_bus`` имеет тип ``IEventBus | None``: в тестах
+и сценариях, где шина не требуется, допускается ``None``. В
+production-пути ``lifespan.py`` всегда передаёт полноценную шину.
+Обработчики, которым событие критично (публикация ``OperationTimedOut``,
+``CoordinateSystemAnomalyDetected`` и т. п.), вызывают
+:func:`_require_event_bus` в начале функции — это явный 503 вместо
+неконтролируемого ``AttributeError``, если шина не инициализирована.
+
+Диагностический метод ``get_queue_stats`` не входит в базовый
+протокол ``IEventBus``: это опциональная возможность конкретной
+реализации (``AsyncEventBus``). В ``/api/diagnostics`` используется
+структурная проверка через ``_EventBusWithStats`` (runtime-checkable
+Protocol), что не сужает диагностику до конкретного класса.
+
 Фильтрация по метаданным:
 Эндпоинт ``/api/search`` принимает дополнительные параметры:
 ``object_code``, ``discipline_code``, ``document_type_code``,
@@ -148,7 +165,7 @@ import tempfile
 import uuid
 from concurrent.futures import Executor
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any, Callable, Protocol, runtime_checkable
 
 try:
     from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -543,6 +560,14 @@ class APIContext:
     Хранит ссылки на компоненты application layer, а также
     сервис получения справочников для фильтров и сервисы
     предпросмотра документа.
+
+    Поля ``event_bus``, ``text_extractor``, ``word_index_cache``,
+    ``highlights_service``, ``reference_data_service``,
+    ``api_executor``, ``scan_executor`` объявлены как опциональные
+    (``| None``): в тестах и сценариях, где функциональность
+    предпросмотра/диагностики не нужна, допускается ``None``.
+    Обработчики, требующие конкретную зависимость, обязаны
+    проверить её наличие и вернуть HTTP 503 при отсутствии.
     """
 
     def __init__(
@@ -572,10 +597,10 @@ class APIContext:
         self.text_extractor = text_extractor
         self.word_index_cache = word_index_cache
         self.highlights_service = highlights_service
-        self._scan_task: asyncio.Task | None = None
+        self._scan_task: asyncio.Task[None] | None = None
         self._scan_lock = asyncio.Lock()
 
-    def get_scan_task(self) -> asyncio.Task | None:
+    def get_scan_task(self) -> asyncio.Task[None] | None:
         """Возвращает текущую задачу сканирования."""
         return self._scan_task
 
@@ -608,6 +633,30 @@ def get_context() -> APIContext:
 CtxDep = Annotated[APIContext, Depends(get_context)]
 
 # ----------------------------------------------------------------------
+# Расширения протоколов
+# ----------------------------------------------------------------------
+
+
+@runtime_checkable
+class _EventBusWithStats(Protocol):
+    """Диагностическое расширение ``IEventBus``.
+
+    Базовый протокол ``IEventBus`` описывает контракт публикации
+    и подписки. Диагностика (``get_queue_stats``) — опциональная
+    возможность конкретной реализации (``AsyncEventBus``), не
+    входящая в базовый контракт. Этот расширенный Protocol
+    позволяет проверить наличие метода через ``isinstance``,
+    не сужая работу до конкретного класса шины.
+
+    Используется в ``/api/diagnostics``.
+    """
+
+    def get_queue_stats(self) -> dict[str, int]:
+        """Возвращает статистику очередей шины."""
+        ...
+
+
+# ----------------------------------------------------------------------
 # Вспомогательные функции
 # ----------------------------------------------------------------------
 
@@ -615,7 +664,7 @@ CtxDep = Annotated[APIContext, Depends(get_context)]
 def _read_config_file(config_path: str) -> dict:
     """Читает файл конфигурации. Блокирующая операция."""
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
@@ -656,6 +705,34 @@ def _scan_themes_sync() -> list[str]:
         if match:
             themes.append(match.group(1))
     return sorted(themes)
+
+
+def _require_event_bus(ctx: APIContext) -> IEventBus:
+    """Возвращает шину событий из контекста или поднимает HTTP 503.
+
+    ``APIContext.event_bus`` объявлен как ``IEventBus | None``:
+    в production-пути ``lifespan.py`` всегда передаёт полноценную
+    шину, но в тестах и сценариях, где функциональность шины не
+    требуется, допускается ``None``. Обработчики, использующие
+    ``run_with_timeout`` с ``event_bus=``, обязаны вызвать эту
+    функцию в начале — тогда mypy видит non-None тип, а клиент
+    получает осмысленный 503 вместо ``AttributeError``.
+
+    Args:
+        ctx: Контекст API.
+
+    Returns:
+        Шина событий (non-None).
+
+    Raises:
+        HTTPException 503: Если шина событий не инициализирована.
+    """
+    if ctx.event_bus is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Шина событий не инициализирована.",
+        )
+    return ctx.event_bus
 
 
 def _resolve_document_file(ctx: APIContext, doc) -> Path:
@@ -798,15 +875,35 @@ def _build_or_get_word_index(
     return index
 
 
-def _on_scan_done(ctx: APIContext) -> None:
-    """Callback завершения задачи сканирования."""
+def _on_scan_done(
+    ctx: APIContext,
+) -> Callable[[asyncio.Future[Any]], None]:
+    """Возвращает callback завершения задачи сканирования.
 
-    def _callback(task: asyncio.Task) -> None:
+    Фабрика callback'а для ``asyncio.Task.add_done_callback``.
+    Возвращаемая функция проверяет, что завершилась именно
+    текущая задача контекста (а не устаревшая), сбрасывает
+    ссылку ``ctx._scan_task`` и извлекает исключение (если было),
+    чтобы asyncio не логировал его как «необработанное».
+
+    Args:
+        ctx: Контекст API.
+
+    Returns:
+        Callable, совместимый с ``add_done_callback``: принимает
+        завершившийся :class:`asyncio.Future`, не возвращает
+        значимого значения.
+    """
+
+    def _callback(task: asyncio.Future[Any]) -> None:
         if ctx._scan_task is not task:
             return
         ctx._scan_task = None
         if task.cancelled():
             return
+        # Извлечение исключения подавляет вывод «Task exception was
+        # never retrieved» в логах asyncio. Обработка ошибки — в
+        # самом корутине _scan_coroutine (публикация событий).
         _ = task.exception()
 
     return _callback
@@ -824,7 +921,7 @@ router = APIRouter(prefix="/api", tags=["DDS API"])
 
 
 @router.post("/debug/filter-events")
-async def debug_filter_events(event: DebugEvent):
+async def debug_filter_events(event: DebugEvent) -> dict[str, str]:
     """Отладочный эндпоинт: печатает события фильтров в stdout сервера."""
     print(
         f"[DEBUG FILTER] type={event.event_type} "
@@ -848,6 +945,7 @@ async def change_password(
     ctx: CtxDep,
 ) -> ChangePasswordResponse:
     """Меняет пароль аутентифицированного пользователя."""
+    event_bus = _require_event_bus(ctx)
     loop = asyncio.get_running_loop()
     try:
         await run_with_timeout(
@@ -859,7 +957,7 @@ async def change_password(
                 request_body.new_password,
             ),
             operation="auth.login",
-            event_bus=ctx.event_bus,
+            event_bus=event_bus,
             context=request_body.username,
             recovery_action="Смена пароля прервана по таймауту.",
         )
@@ -917,6 +1015,8 @@ async def search(
     В этом случае каждый документ содержит одну виртуальную
     страницу (``page_number=0``, пустой сниппет).
     """
+    event_bus = _require_event_bus(ctx)
+
     # Нормализация запроса: пустая строка вместо None
     query = q.strip() if q and q.strip() else ""
 
@@ -941,7 +1041,7 @@ async def search(
                 ),
             ),
             operation="search.query",
-            event_bus=ctx.event_bus,
+            event_bus=event_bus,
             context=query or "(пустой запрос)",
             recovery_action="Поиск прерван по таймауту.",
         )
@@ -1035,7 +1135,7 @@ async def get_filter_metadata(
             ctx.api_executor,
             ctx.reference_data_service.get_references,
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка получения справочников: {e}")
 
     return data
@@ -1096,6 +1196,7 @@ async def get_page_text(
     как часть ключа LRU-кэша (шаг 3.2): это обеспечивает
     автоинвалидацию кэша при переиндексации файла.
     """
+    event_bus = _require_event_bus(ctx)
     loop = asyncio.get_running_loop()
     doc = await loop.run_in_executor(
         ctx.api_executor,
@@ -1123,7 +1224,7 @@ async def get_page_text(
                 doc.file_hash,
             ),
             operation="document.page_load",
-            event_bus=ctx.event_bus,
+            event_bus=event_bus,
             context=f"{doc_id}:{page_number}",
             recovery_action="Загрузка текста страницы прервана.",
         )
@@ -1180,6 +1281,7 @@ async def get_pages_text_batch(
     Исполнитель: ``api_executor`` (чтение из БД, не CPU-интенсивное;
     согласовано с одиночным GET-эндпоинтом ``/documents/{id}/pages/{n}``).
     """
+    event_bus = _require_event_bus(ctx)
     loop = asyncio.get_running_loop()
     pages: dict[str, str] = {}
     errors: dict[str, str] = {}
@@ -1207,7 +1309,7 @@ async def get_pages_text_batch(
                     doc.file_hash,
                 ),
                 operation="document.page_load",
-                event_bus=ctx.event_bus,
+                event_bus=event_bus,
                 context=f"{doc_id}:{request_body.page_number}",
                 recovery_action="Загрузка текста страницы прервана.",
             )
@@ -1304,6 +1406,7 @@ async def render_document_page(
         HTTPException 503: ``text_extractor`` не инициализирован.
         HTTPException 504: Таймаут рендера.
     """
+    event_bus = _require_event_bus(ctx)
     loop = asyncio.get_running_loop()
     doc = await loop.run_in_executor(
         ctx.api_executor,
@@ -1319,11 +1422,15 @@ async def render_document_page(
         )
     abs_path = _resolve_document_file(ctx, doc)
 
-    if ctx.text_extractor is None:
+    # Сужение типа: mypy не сохраняет narrowing атрибута ``ctx.text_extractor``
+    # внутри вложенной функции ``_do_render``. Копируем в локальную
+    # переменную — после ``is None``-проверки она имеет тип non-None.
+    text_extractor = ctx.text_extractor
+    if text_extractor is None:
         raise HTTPException(status_code=503, detail="Рендер недоступен.")
 
     def _do_render() -> bytes:
-        document = ctx.text_extractor.open_document(str(abs_path))
+        document = text_extractor.open_document(str(abs_path))
         try:
             return document.render_page(page_number, dpi)
         finally:
@@ -1333,7 +1440,7 @@ async def render_document_page(
         png_bytes = await run_with_timeout(
             loop.run_in_executor(ctx.scan_executor, _do_render),
             operation="render.page",
-            event_bus=ctx.event_bus,
+            event_bus=event_bus,
             context=f"{doc_id}:{page_number}",
             recovery_action="Рендер прерван по таймауту.",
         )
@@ -1390,6 +1497,7 @@ async def get_page_highlights(
             не инициализирован.
         HTTPException 504: Таймаут построения индекса.
     """
+    event_bus = _require_event_bus(ctx)
     loop = asyncio.get_running_loop()
     doc = await loop.run_in_executor(
         ctx.api_executor,
@@ -1422,7 +1530,7 @@ async def get_page_highlights(
                 abs_path,
             ),
             operation="render.highlights",
-            event_bus=ctx.event_bus,
+            event_bus=event_bus,
             context=f"{doc_id}:{page_number}",
             recovery_action="Подсветка недоступна.",
         )
@@ -1437,7 +1545,7 @@ async def get_page_highlights(
 
     # Публикация события об аномалии для аудита.
     if transform_confidence in ("high", "medium"):
-        ctx.event_bus.publish(
+        event_bus.publish(
             CoordinateSystemAnomalyDetected(
                 correlation_id="",
                 source="API",
@@ -1477,6 +1585,10 @@ async def delete_document(
     сработает: оставшиеся записи могли бы быть возвращены
     при последующих обращениях.
     """
+    # ``session`` используется как зависимость FastAPI для проверки
+    # прав администратора; сама переменная не требуется в теле.
+    _ = session
+
     if not confirm:
         return {
             "message": (
@@ -1487,6 +1599,7 @@ async def delete_document(
             "confirmed": False,
         }
 
+    event_bus = _require_event_bus(ctx)
     loop = asyncio.get_running_loop()
     current_status = await loop.run_in_executor(
         ctx.api_executor,
@@ -1506,7 +1619,7 @@ async def delete_document(
                 doc_id,
             ),
             operation="document.delete",
-            event_bus=ctx.event_bus,
+            event_bus=event_bus,
             context=doc_id,
             recovery_action="Удаление прервано по таймауту.",
         )
@@ -1595,7 +1708,7 @@ async def start_scan(
                     ctx.scan_orchestrator.run_secondary_scans,
                 )
 
-        task = asyncio.create_task(_scan_coroutine())
+        task: asyncio.Task[None] = asyncio.create_task(_scan_coroutine())
         ctx._scan_task = task
         task.add_done_callback(_on_scan_done(ctx))
         task_id = str(uuid.uuid4())
@@ -1632,13 +1745,14 @@ async def refresh_document_metadata(
     session: AdminSessionDep,
 ) -> dict:
     """Запускает повторное обновление метаданных документов."""
+    _ = session
     loop = asyncio.get_running_loop()
     try:
         count = await loop.run_in_executor(
             ctx.scan_executor,
             ctx.scan_orchestrator.refresh_document_metadata,
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка обновления метаданных: {e}")
 
     return {
@@ -1667,10 +1781,22 @@ async def scan_progress_sse(
     После отправки начального состояния проверяется наличие активной
     задачи сканирования. Если задача отсутствует или завершена,
     поток закрывается, не оставляя открытых соединений.
+
+    Примечание по ``event_bus``:
+        В отличие от большинства обработчиков, SSE-поток **не
+        использует** :func:`_require_event_bus`: если шина не
+        инициализирована, клиент получает пустой поток (одно
+        событие ``{}`` и закрытие), а не 503. Это осознанное
+        решение: SSE — длительное соединение, и 503 после
+        установки соединения бесполезен для клиента.
     """
+    # Захват шины в локальную переменную до создания замыкания:
+    # mypy не сохраняет narrowing ``ctx.event_bus`` внутри
+    # вложенной корутины, но локальная переменная имеет явный тип.
+    event_bus: IEventBus | None = ctx.event_bus
 
     async def event_generator():
-        if ctx.event_bus is None:
+        if event_bus is None:
             yield "data: {}\n\n"
             return
 
@@ -1704,7 +1830,7 @@ async def scan_progress_sse(
             return
 
         # Подписка на все события сканирования
-        subscription = ctx.event_bus.subscribe(
+        subscription = event_bus.subscribe(
             event_types={
                 "scan.progress",
                 "scan.completed",
@@ -1834,6 +1960,7 @@ async def get_index_status(
     ctx: CtxDep,
 ) -> IndexStatusResponse:
     """Возвращает фактическое состояние индексации системы."""
+    event_bus = _require_event_bus(ctx)
     try:
         loop = asyncio.get_running_loop()
         if refresh:
@@ -1855,7 +1982,7 @@ async def get_index_status(
                         ctx.rd_directory,
                     ),
                     operation="index.refresh",
-                    event_bus=ctx.event_bus,
+                    event_bus=event_bus,
                     context=ctx.rd_directory,
                     recovery_action="Пересчёт прерван по таймауту.",
                 )
@@ -1872,7 +1999,7 @@ async def get_index_status(
             )
     except HTTPException:
         raise
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Не удалось получить состояние индексации: {e}",
@@ -1964,6 +2091,7 @@ async def get_settings(
     session: AdminSessionDep,
 ) -> SettingsResponse:
     """Возвращает текущие настройки DDS."""
+    _ = session
     loop = asyncio.get_running_loop()
     config = await loop.run_in_executor(
         ctx.api_executor,
@@ -1986,6 +2114,7 @@ async def update_settings(
     session: AdminSessionDep,
 ) -> SettingsUpdateResponse:
     """Обновляет настройки DDS."""
+    _ = session
     loop = asyncio.get_running_loop()
 
     current_status = await loop.run_in_executor(
@@ -2069,10 +2198,27 @@ async def get_diagnostics(
     ctx: CtxDep,
     session: AdminSessionDep,
 ) -> dict:
-    """Возвращает диагностическую информацию для администраторов."""
-    result = {}
+    """Возвращает диагностическую информацию для администраторов.
 
-    if ctx.event_bus is not None:
+    Собирает статистику из трёх источников:
+
+    - ``event_bus`` — через расширенный протокол
+      :class:`_EventBusWithStats` (не входит в базовый ``IEventBus``;
+      проверяется ``isinstance`` для безопасности на случай
+      альтернативных реализаций без диагностики);
+    - ``search_engine`` — возможности поискового бэкенда;
+    - ``scan_orchestrator`` — статистика пула БД;
+    - ``word_index_cache`` — попадания/промахи кэша (если есть).
+    """
+    _ = session
+    result: dict = {}
+
+    # Диагностика шины событий: ``get_queue_stats`` объявлен не в
+    # базовом ``IEventBus``, а в расширении ``_EventBusWithStats``.
+    # ``isinstance`` с runtime-checkable Protocol проверяет наличие
+    # метода на уровне структуры типа, не сужая до конкретной
+    # реализации (например, до ``AsyncEventBus``).
+    if isinstance(ctx.event_bus, _EventBusWithStats):
         result["event_bus"] = ctx.event_bus.get_queue_stats()
 
     result["search_capabilities"] = sorted(ctx.search_engine.get_backend_capabilities())

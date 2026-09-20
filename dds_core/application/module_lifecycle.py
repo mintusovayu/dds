@@ -271,7 +271,7 @@ class ModuleLifecycle:
                         version=manifest.version,
                     )
                 )
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 error_msg = f"Модуль '{manifest.module_name}': {e}"
                 errors.append(error_msg)
 
@@ -553,7 +553,7 @@ class ModuleLifecycle:
             try:
                 self._loader.load_module(manifest, module_config)
                 return
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 last_error = e
                 if attempt < config.MODULE_LOAD_RETRY_COUNT - 1:
                     time.sleep(config.MODULE_LOAD_RETRY_INTERVAL_SECONDS)
@@ -645,7 +645,7 @@ class ModuleLifecycle:
                 consecutive_errors = 0
                 processed += 1
 
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 consecutive_errors += 1
 
                 # Публикация события об ошибке
@@ -670,7 +670,7 @@ class ModuleLifecycle:
 
                     try:
                         processor.request_shutdown()
-                    except Exception:  # noqa: BLE001, S110
+                    except Exception:
                         pass
 
                     break

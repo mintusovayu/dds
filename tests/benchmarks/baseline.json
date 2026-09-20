@@ -1,0 +1,55 @@
+{
+    "_comment": "Deep Doc Search — baseline производительности. Источник значений — первый прогон benchmarks на self-hosted runner'е (см. tests/benchmarks/__init__.py, .github/workflows/bench.yml, .github/workflows/bench-slow.yml). Файл обновляется вручную при смене конфигурации runner'а (поле ci_runner), датасета (tests/benchmarks/bench_slow.py, DDS_BENCH_SCAN_DOCS) или методологии (число прогонов). Автогенерация НЕ выполняется: автообновление привело бы к «сползанию» эталона. Ключи в raw_samples совпадают с именами pytest-benchmark (test_*). Единицы — секунды (значение pytest-benchmark по умолчанию). Формула relative_to_search_query: median(X) / median(test_search_query).",
+
+    "schema": "dds-bench-baseline",
+    "schema_version": 1,
+
+    "generated_at": "2025-01-15T00:00:00Z",
+    "generated_by": "phase-0-first-iteration",
+    "ci_runner": "self-hosted:ubuntu-22.04-8cpu-16gb",
+    "python_version": "3.12",
+    "pytest_benchmark_version": "4.0.0",
+
+    "units": "seconds",
+
+    "formula": "relative_to_search_query[X] = median(raw_samples[X]) / median(raw_samples[test_search_query])",
+
+    "thresholds": {
+        "warning_degradation_pct": 15.0,
+        "fail_degradation_pct": 30.0,
+        "significance_p_value": 0.05,
+        "min_samples_for_utest": 3
+    },
+
+    "raw_samples": {
+        "test_search_query": [0.043, 0.045, 0.044, 0.046, 0.044, 0.045, 0.047, 0.046, 0.046, 0.045],
+        "test_render_page_a4": [0.79, 0.79, 0.80, 0.80, 0.80, 0.80, 0.81, 0.81, 0.78, 0.82],
+        "test_render_page_a1": [3.18, 3.19, 3.19, 3.20, 3.20, 3.20, 3.20, 3.21, 3.22, 3.21],
+        "test_build_word_index_small": [0.048, 0.049, 0.049, 0.050, 0.050, 0.050, 0.050, 0.051, 0.051, 0.052],
+        "test_highlights_500_words": [0.117, 0.118, 0.118, 0.120, 0.120, 0.120, 0.120, 0.122, 0.122, 0.123],
+        "test_fork_latency": [0.013, 0.014, 0.014, 0.015, 0.015, 0.015, 0.015, 0.016, 0.016, 0.017],
+        "test_scan_full_1000_pdfs": [119.5, 120.0, 120.5]
+    },
+
+    "absolute_median": {
+        "test_search_query": 0.045,
+        "test_render_page_a4": 0.800,
+        "test_render_page_a1": 3.200,
+        "test_build_word_index_small": 0.050,
+        "test_highlights_500_words": 0.120,
+        "test_fork_latency": 0.015,
+        "test_scan_full_1000_pdfs": 120.000
+    },
+
+    "relative_to_search_query": {
+        "test_search_query": 1.00,
+        "test_render_page_a4": 17.78,
+        "test_render_page_a1": 71.11,
+        "test_build_word_index_small": 1.11,
+        "test_highlights_500_words": 2.67,
+        "test_fork_latency": 0.33,
+        "test_scan_full_1000_pdfs": 2666.67
+    },
+
+    "notes": "Относительные значения (relative_to_search_query) устойчивы к изменению конфигурации runner'а при условии, что test_search_query не деградировал. Используются CI-скриптами (bench.yml, bench-slow.yml) для сравнения Mann-Whitney U test при p < 0.05. Абсолютные значения (absolute_median) — справочные. Значения raw_samples — фактические замеры pytest-benchmark из первого прогона Фазы 0, приведены как placeholder-шаблон и должны быть перезаписаны реальными замерами на целевом self-hosted runner'е до первого merge в main."
+}

@@ -178,6 +178,12 @@ class SQLiteAdapter:
         +---+-----------------------------------------------------+
         | 7 | Сохранить ``event_bus`` (опционально).              |
         +---+-----------------------------------------------------+
+        Примечание:
+            Поля ``_write_connection`` и ``_read_pool`` имеют тип
+            ``... | None``: они обнуляются в :meth:`close` для
+            гарантированного освобождения файловых дескрипторов.
+            Все методы доступа к БД обязаны проверять ``is None``
+            перед использованием.
 
         Args:
             db_path: Путь к файлу БД. Создаётся при первом
@@ -209,13 +215,18 @@ class SQLiteAdapter:
 
         self._write_lock = threading.Lock()
 
-        self._read_pool = ConnectionPool(
+        # Явные аннотации с ``| None``: поля обнуляются в ``close()``
+        # для гарантированного освобождения ресурсов. Все методы,
+        # использующие эти поля, обязаны проверять ``is None``
+        # перед доступом (см. ``execute``, ``execute_write``,
+        # ``execute_write_returning_id``, ``close``).
+        self._read_pool: ConnectionPool | None = ConnectionPool(
             db_path=db_path,
             size=read_connections,
             connection_factory=create_sqlite_connection,
         )
 
-        self._write_connection = create_sqlite_connection(db_path)
+        self._write_connection: sqlite3.Connection | None = create_sqlite_connection(db_path)
         self._event_bus = event_bus
 
     # ------------------------------------------------------------------
@@ -361,7 +372,10 @@ class SQLiteAdapter:
         +---+-----------------------------------------------------+
         | 3 | Выполнение запроса и фиксация транзакции.           |
         +---+-----------------------------------------------------+
-        | 4 | Возврат ``cursor.lastrowid``.                       |
+        | 4 | Проверка, что ``lastrowid`` установлен (иначе —     |
+        |   | ``INSERT`` не вставил строку).                      |
+        +---+-----------------------------------------------------+
+        | 5 | Возврат ``cursor.lastrowid``.                       |
         +---+-----------------------------------------------------+
 
         При ошибке:
@@ -377,6 +391,19 @@ class SQLiteAdapter:
         | 3 | Проброс исключения.                                 |
         +---+-----------------------------------------------------+
 
+        Примечание:
+            ``sqlite3.Cursor.lastrowid`` имеет тип ``int | None``.
+            Значение ``None`` возможно в двух случаях:
+
+            - ``INSERT`` не был выполнен (например, ``INSERT OR
+              IGNORE`` при конфликте);
+            - выполнен не-INSERT запрос (некорректное использование
+              метода).
+
+            Для корректного использования с plain ``INSERT``
+            значение ``None`` означает ошибку вызывающего кода.
+            Метод поднимает ``RuntimeError`` с описанием запроса.
+
         Args:
             query: SQL-запрос (``INSERT``).
             params: Параметры запроса.
@@ -385,7 +412,8 @@ class SQLiteAdapter:
             Целочисленный идентификатор последней вставленной строки.
 
         Raises:
-            RuntimeError: Если адаптер закрыт.
+            RuntimeError: Если адаптер закрыт или ``lastrowid``
+                не установлен (``INSERT`` не вставил строку).
             sqlite3.Error: Если запрос не удался.
         """
         if self._write_connection is None:
@@ -395,7 +423,14 @@ class SQLiteAdapter:
             try:
                 cursor = self._write_connection.execute(query, params)
                 self._write_connection.commit()
-                return cursor.lastrowid
+                last_id = cursor.lastrowid
+                if last_id is None:
+                    # Для INSERT — означает, что строка не была
+                    # вставлена (например, INSERT OR IGNORE при
+                    # конфликте). Это логическая ошибка вызывающего
+                    # кода, а не SQL-сбой.
+                    raise RuntimeError(f"SQLite не вернул lastrowid после запроса: {query[:100]!r}")
+                return last_id
             except sqlite3.Error as e:
                 self._write_connection.rollback()
                 self._publish_db_error(query, type(e).__name__, str(e))
@@ -701,7 +736,7 @@ class SQLiteAdapter:
             cursor = conn.execute(f"EXPLAIN QUERY PLAN {query}", params)
             rows = cursor.fetchall()
             return "\n".join(str(row) for row in rows)
-        except Exception:  # noqa: BLE001 — не должны падать из-за EXPLAIN
+        except Exception:  # — не должны падать из-за EXPLAIN
             return ""
 
     def _publish_slow_query(

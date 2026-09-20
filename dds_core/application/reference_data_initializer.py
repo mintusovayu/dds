@@ -143,7 +143,7 @@ class ReferenceDataInitializer:
 
         # 2. Чтение JSON
         try:
-            with open(self._json_path, "r", encoding="utf-8") as f:
+            with open(self._json_path, encoding="utf-8") as f:
                 data = json.load(f)
         except FileNotFoundError:
             print(

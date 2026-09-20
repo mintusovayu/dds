@@ -604,19 +604,27 @@ class ModuleConfig:
         return default
 
     def get_int(self, key: str, default: int = 0) -> int:
-        """
-        Возвращает целочисленный параметр конфигурации.
+        """Возвращает целочисленный параметр конфигурации.
+
         Args:
-        key: Имя параметра.
-        default: Значение по умолчанию.
+            key: Имя параметра.
+            default: Значение по умолчанию.
+
         Returns:
-        Целочисленное значение параметра.
+            Целочисленное значение параметра.
         """
         value = self.parameters.get(key, default)
-        try:
+        # bool — подкласс int, проверяем раньше.
+        if isinstance(value, bool):
             return int(value)
-        except (TypeError, ValueError):
-            return default
+        if isinstance(value, (int, float)):
+            return int(value)
+        if isinstance(value, str):
+            try:
+                return int(value)
+            except ValueError:
+                return default
+        return default
 
 
 @dataclass

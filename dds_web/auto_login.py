@@ -193,9 +193,7 @@ def parse_auto_login_config(raw: dict) -> AutoLoginConfig:
 
     raw_networks = raw.get("allowed_networks", [])
     if not isinstance(raw_networks, list):
-        raise ValueError(  # noqa: TRY004
-            "auto_login.allowed_networks должен быть списком CIDR-строк."
-        )
+        raise ValueError("auto_login.allowed_networks должен быть списком CIDR-строк.")
 
     networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
     for net_str in raw_networks:
@@ -208,9 +206,7 @@ def parse_auto_login_config(raw: dict) -> AutoLoginConfig:
 
     raw_map = raw.get("ip_user_map", {})
     if not isinstance(raw_map, dict):
-        raise ValueError(  # noqa: TRY004
-            "auto_login.ip_user_map должен быть словарём «IP-адрес → username»."
-        )
+        raise ValueError("auto_login.ip_user_map должен быть словарём «IP-адрес → username».")
 
     normalized_map: dict[str, str] = {}
     for ip_str, username in raw_map.items():
@@ -538,7 +534,7 @@ async def auto_login_middleware(
         # scope["state"].
         request.scope.setdefault("state", {})
         request.scope["state"]["auto_login_token"] = token
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.error("Auto-login failed: %s", e)
         return await call_next(request)
 

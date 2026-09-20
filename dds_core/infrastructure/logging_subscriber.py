@@ -463,7 +463,7 @@ class LoggingSubscriber:
             event = await self._subscription.get()
             try:
                 self.handle_event(event)
-            except Exception:  # noqa: BLE001, S110
+            except Exception:
                 pass
 
     @staticmethod

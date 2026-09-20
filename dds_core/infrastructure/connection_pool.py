@@ -118,18 +118,25 @@ class ConnectionPool:
         self._db_path = db_path
         self._size = size
 
-        # Импорт фабрики по умолчанию, если она не передана.
+        # Определение фабрики соединений: переданная или дефолтная.
+        # Локальная переменная с явной аннотацией устраняет
+        # неопределённость mypy после импорта через alias.
+        factory: ConnectionFactory
         if connection_factory is None:
             from .connection_factory import (
-                create_sqlite_connection as connection_factory,
+                create_sqlite_connection as _default_factory,
             )
 
-        self._factory = connection_factory
+            factory = _default_factory
+        else:
+            factory = connection_factory
+
+        self._factory: ConnectionFactory = factory
 
         # Создание очереди и заполнение соединениями.
         self._queue: queue.Queue[sqlite3.Connection] = queue.Queue(maxsize=size)
         for _ in range(size):
-            conn = self._factory(self._db_path)
+            conn = factory(self._db_path)
             self._queue.put(conn)
 
         self._closed = False

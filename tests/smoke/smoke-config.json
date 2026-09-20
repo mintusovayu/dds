@@ -1,0 +1,26 @@
+{
+  "dds": {
+    "db_path": "/tmp/pytest-of-amin/pytest-0/dds_smoke0/db/smoke.db",
+    "rd_directory": "/tmp/pytest-of-amin/pytest-0/dds_smoke0/rd_directory",
+    "modules_directory": "/tmp/pytest-of-amin/pytest-0/dds_smoke0/modules_directory",
+    "host": "127.0.0.1",
+    "port": 8765,
+    "reference_data_path": "/tmp/pytest-of-amin/pytest-0/dds_smoke0/references.json"
+  },
+  "modules": {},
+  "auth": {
+    "users": [
+      {
+        "username": "smoke_admin",
+        "password": "SmokePass1234",
+        "role": "admin"
+      }
+    ],
+    "session_ttl_seconds": 3600,
+    "auto_login": {
+      "enabled": false,
+      "allowed_networks": [],
+      "ip_user_map": {}
+    }
+  }
+}

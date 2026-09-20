@@ -84,7 +84,7 @@ def build_document_queries(
     """
     try:
         document = text_extractor.open_document(abs_file_path)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
     try:
@@ -132,7 +132,7 @@ def build_document_queries(
                 )
             )
         return queries
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
     finally:
         document.close()

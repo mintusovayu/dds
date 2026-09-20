@@ -110,6 +110,20 @@
 |                               | ``put`` в заполненную ``_extract_queue``,|
 |                               | не проверяя отмену.                      |
 +-------------------------------+------------------------------------------+
+| Очереди создаются в          | Поля ``_file_queue`` и ``_extract_queue``|
+| ``__init__``                  | инициализируются сразу, чтобы их тип был |
+|                               | non-Optional. В ``run_async`` поля       |
+|                               | **пересоздаются** свежими экземплярами — |
+|                               | это очищает очереди между запусками без  |
+|                               | введения ``| None`` в тип поля.          |
++-------------------------------+------------------------------------------+
+| Generic-типизация             | ``_wait_task_or_cancel`` и               |
+| вспомогательных методов       | ``_put_or_cancel`` параметризованы       |
+|                               | ``TypeVar`` по типу элементов очереди.   |
+|                               | Это позволяет mypy корректно сузить тип  |
+|                               | элемента после ``isinstance``-проверок   |
+|                               | (``str | _QueueSentinel`` → ``str``).    |
++-------------------------------+------------------------------------------+
 
 Принципы:
 - Application layer: оркестрирует, не содержит бизнес-логики.
@@ -128,7 +142,7 @@ import uuid
 from concurrent.futures import Executor
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, TypeVar
 
 from ..domain import config
 from ..domain.events import FileProcessingFailed
@@ -160,6 +174,21 @@ _logger = logging.getLogger("dds.scan_pipeline")
 """Логгер конвейера. Используется только для сообщений о потере
 несохранённых документов при финальном сбросе буфера (RuntimeError,
 timeout, отмена). Все остальные события публикуются через шину."""
+
+
+# ----------------------------------------------------------------------
+# Обобщённый тип для элементов очередей
+# ----------------------------------------------------------------------
+
+_T = TypeVar("_T")
+"""Параметр типа для ``_wait_task_or_cancel`` и ``_put_or_cancel``.
+
+Позволяет mypy корректно связать тип элемента, отправляемого в
+очередь, с типом возвращаемого значения. После ``isinstance``-
+проверок в вызывающем коде mypy сужает union-тип (например,
+``str | _QueueSentinel`` → ``str``), устраняя необходимость
+в ``cast`` или ``# type: ignore``.
+"""
 
 
 # ----------------------------------------------------------------------
@@ -289,6 +318,16 @@ class ScanPipeline:
     буфера документов **не записывается** в БД. При вынужденном
     сбросе потери логируются через ``_log_buffer_loss``.
 
+    Атрибуты очередей:
+    Поля ``_file_queue`` и ``_extract_queue`` создаются в
+    :meth:`__init__` (тип non-Optional) и **пересоздаются** в
+    :meth:`run_async` для каждого нового запуска. Это даёт две
+    гарантии:
+
+    - mypy не выводит ``| None`` из-за отложенной инициализации;
+    - очереди гарантированно пусты перед каждым запуском (важно
+      при повторных вызовах ``run_async`` в рамках одного процесса).
+
     Attributes:
 
     +-------------------------+-------------------------------------------+
@@ -319,6 +358,12 @@ class ScanPipeline:
     | ``_cancel_event``       | ``asyncio.Event`` для кооперативной       |
     |                         | отмены. Создаётся в ``run_async``,        |
     |                         | устанавливается в ``cancel()``.           |
+    +-------------------------+-------------------------------------------+
+    | ``_file_queue``         | Очередь между этапами 1 и 2 (тип          |
+    |                         | ``Queue[str | _QueueSentinel]``).         |
+    +-------------------------+-------------------------------------------+
+    | ``_extract_queue``      | Очередь между этапами 2 и 3 (тип          |
+    |                         | ``Queue[_FileTask | _QueueSentinel]``).   |
     +-------------------------+-------------------------------------------+
     """
 
@@ -357,6 +402,12 @@ class ScanPipeline:
         | 5 | Инициализация ``_cancel_event = None``. Событие      |
         |   | создаётся в ``run_async``.                          |
         +---+-----------------------------------------------------+
+        | 6 | Создание очередей ``_file_queue`` и                  |
+        |   | ``_extract_queue`` с ``maxsize`` (backpressure).     |
+        |   | Очереди создаются здесь, а не в ``run_async``,       |
+        |   | чтобы тип поля был non-Optional. В ``run_async``     |
+        |   | они пересоздаются — очищаются между запусками.      |
+        +---+-----------------------------------------------------+
         """
         self._db = db
         self._scanner = scanner
@@ -374,8 +425,17 @@ class ScanPipeline:
         self._tracker = ScanProgressTracker(event_bus)
         self._rd_directory: str = ""
         self._correlation_id: str = ""
-        self._file_queue: asyncio.Queue[str | _QueueSentinel] | None = None
-        self._extract_queue: asyncio.Queue[_FileTask | _QueueSentinel] | None = None
+        # Очереди создаются сразу с non-Optional типами. В run_async
+        # они пересоздаются свежими экземплярами для изоляции
+        # между запусками. Создание asyncio.Queue вне event loop
+        # безопасно: примитив не привязывается к loop'у до первой
+        # блокирующей операции.
+        self._file_queue: asyncio.Queue[str | _QueueSentinel] = asyncio.Queue(
+            maxsize=config.SCAN_QUEUE_MAX_SIZE
+        )
+        self._extract_queue: asyncio.Queue[_FileTask | _QueueSentinel] = asyncio.Queue(
+            maxsize=config.SCAN_QUEUE_MAX_SIZE
+        )
         self._scan_executor = scan_executor
         self._document_cache = document_cache
         self._extract_executor = extract_executor
@@ -429,8 +489,8 @@ class ScanPipeline:
 
     async def _wait_task_or_cancel(
         self,
-        queue: asyncio.Queue,
-    ) -> object | None:
+        queue: asyncio.Queue[_T],
+    ) -> _T | None:
         """Ожидает задачу из очереди или кооперативную отмену.
 
         Создаёт две задачи: получение элемента из очереди и ожидание
@@ -447,10 +507,13 @@ class ScanPipeline:
         возвращает результат ``get_task``.
 
         Args:
-            queue: Очередь для получения задачи.
+            queue: Очередь для получения задачи. Тип элемента —
+                ``_T`` (обобщённый). Возвращаемое значение имеет
+                тип ``_T | None``, что позволяет вызывающему коду
+                сузить тип через ``isinstance``-проверки.
 
         Returns:
-            Задача из очереди или ``None`` при отмене.
+            Задача из очереди (тип ``_T``) или ``None`` при отмене.
 
         Raises:
             RuntimeError: Если ``_cancel_event`` не инициализирован
@@ -459,8 +522,8 @@ class ScanPipeline:
         if self._cancel_event is None:
             raise RuntimeError("_cancel_event не инициализирован")
 
-        get_task: asyncio.Task = asyncio.create_task(queue.get())
-        cancel_task: asyncio.Task = asyncio.create_task(self._cancel_event.wait())
+        get_task: asyncio.Task[_T] = asyncio.create_task(queue.get())
+        cancel_task: asyncio.Task[bool] = asyncio.create_task(self._cancel_event.wait())
 
         done, _ = await asyncio.wait(
             {get_task, cancel_task},
@@ -488,8 +551,8 @@ class ScanPipeline:
 
     async def _put_or_cancel(
         self,
-        queue: asyncio.Queue,
-        item: object,
+        queue: asyncio.Queue[_T],
+        item: _T,
     ) -> bool:
         """Кладёт элемент в очередь с возможностью кооперативной отмены.
 
@@ -507,7 +570,9 @@ class ScanPipeline:
 
         Args:
             queue: Очередь для отправки.
-            item: Элемент для отправки.
+            item: Элемент для отправки. Тип элемента — ``_T``
+                (обобщённый, должен совпадать с типом элемента
+                очереди).
 
         Returns:
             ``True``, если элемент положен в очередь.
@@ -521,8 +586,8 @@ class ScanPipeline:
         if self._cancel_event.is_set():
             return False
 
-        put_task: asyncio.Task = asyncio.create_task(queue.put(item))
-        cancel_task: asyncio.Task = asyncio.create_task(self._cancel_event.wait())
+        put_task: asyncio.Task[None] = asyncio.create_task(queue.put(item))
+        cancel_task: asyncio.Task[bool] = asyncio.create_task(self._cancel_event.wait())
 
         done, _ = await asyncio.wait(
             {put_task, cancel_task},
@@ -575,7 +640,9 @@ class ScanPipeline:
         |   | ``scan.cache_load``. При таймауте кэш               |
         |   | отключается (``_document_cache = None``).           |
         +---+-----------------------------------------------------+
-        | 4 | Создание очередей с ``maxsize`` (backpressure).     |
+        | 4 | **Пересоздание очередей** с ``maxsize``             |
+        |   | (backpressure). Старые экземпляры заменяются —      |
+        |   | это очищает очереди между запусками.                |
         +---+-----------------------------------------------------+
         | 5 | Запуск этапов в ``asyncio.TaskGroup``.              |
         +---+-----------------------------------------------------+
@@ -625,8 +692,14 @@ class ScanPipeline:
             except TimeoutError:
                 self._document_cache = None
 
-        self._file_queue = asyncio.Queue(maxsize=config.SCAN_QUEUE_MAX_SIZE)
-        self._extract_queue = asyncio.Queue(maxsize=config.SCAN_QUEUE_MAX_SIZE)
+        # Пересоздание очередей для нового запуска. Поля объявлены
+        # в __init__ с non-Optional типом; здесь мы присваиваем
+        # свежие экземпляры, очищая очереди от возможных остатков
+        # предыдущих запусков.
+        self._file_queue = asyncio.Queue[str | _QueueSentinel](maxsize=config.SCAN_QUEUE_MAX_SIZE)
+        self._extract_queue = asyncio.Queue[_FileTask | _QueueSentinel](
+            maxsize=config.SCAN_QUEUE_MAX_SIZE
+        )
 
         try:
             async with asyncio.TaskGroup() as tg:
@@ -639,7 +712,7 @@ class ScanPipeline:
             # обработки в ScanOrchestrator.run_primary_scan
         except ExceptionGroup:
             self._tracker.set_status(ScanStatus.ERROR)
-        except Exception:  # noqa: BLE001
+        except Exception:
             self._tracker.set_status(ScanStatus.ERROR)
 
         if self._tracker.get_status() == ScanStatus.RUNNING:
@@ -837,6 +910,7 @@ class ScanPipeline:
                 self._file_queue.task_done()
                 break
 
+            # mypy: после исключения None и _QueueSentinel item: str.
             file_path: str = item
             self._tracker.set_current_file(file_path)
 
@@ -1004,7 +1078,7 @@ class ScanPipeline:
                 last_modified=current_mtime,
                 doc_id=new_doc_id,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return HashResult(
                 outcome=HashOutcome.ERROR,
                 abs_file_path=file_path,
@@ -1099,6 +1173,7 @@ class ScanPipeline:
                 self._extract_queue.task_done()
                 break
 
+            # mypy: после исключения None и _QueueSentinel item: _FileTask.
             task: _FileTask = item
 
             # Проверка MAX_SCAN_ERRORS
@@ -1165,9 +1240,9 @@ class ScanPipeline:
                         task.last_modified,
                         task.abs_file_path,
                     )
-                except Exception:  # noqa: BLE001
+                except Exception:
                     queries = None
-            except Exception:  # noqa: BLE001
+            except Exception:
                 queries = None
 
             if queries is not None:

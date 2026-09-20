@@ -79,7 +79,7 @@ def main() -> None:
     # Полная загрузка конфигурации выполняется в lifespan,
     # здесь же нужны только параметры сетевого подключения.
     try:
-        with open(args.config, "r", encoding="utf-8") as f:
+        with open(args.config, encoding="utf-8") as f:
             config = json.load(f)
     except FileNotFoundError:
         print(f"Ошибка: файл конфигурации не найден: {args.config}")
@@ -122,7 +122,7 @@ def main() -> None:
         server.run()
     except KeyboardInterrupt:
         print("\nINFO:     Остановка сервера (KeyboardInterrupt)...")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print(f"\nОшибка сервера: {e}")
         sys.exit(1)
 

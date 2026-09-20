@@ -89,7 +89,7 @@ from typing import Any, Self
 try:
     import pymupdf as fitz
 except ImportError:
-    import fitz  # type: ignore[no-redef]
+    import fitz
 
 from ..application.text_normalizer import normalize_text
 from ..domain import config as core_config
@@ -260,7 +260,7 @@ class PyMuPDFTextDocument:
             raise
         except (ValueError, MemoryError, OSError):
             return ""
-        except Exception:  # noqa: BLE001
+        except Exception:
             return ""
 
     def render_page(self, page_index: int, dpi: int) -> bytes:
@@ -487,7 +487,7 @@ class PyMuPDFTextDocument:
         # Использует параллельный список block_line_pairs —
         # индекс i в entries и block_line_pairs совпадают.
         by_line: dict[tuple[int, int], list[WordEntry]] = {}
-        for entry, (block_no, line_no) in zip(entries, block_line_pairs):
+        for entry, (block_no, line_no) in zip(entries, block_line_pairs, strict=False):
             key = (block_no, line_no)
             by_line.setdefault(key, []).append(entry)
         for lst in by_line.values():
@@ -508,7 +508,7 @@ class PyMuPDFTextDocument:
         self._closed = True
         try:
             self._doc.close()
-        except Exception:  # noqa: BLE001, S110
+        except Exception:
             pass
 
     def __enter__(self) -> Self:

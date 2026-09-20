@@ -120,10 +120,6 @@ from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from urllib.parse import quote
 
-from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
-from fastapi.staticfiles import StaticFiles
-
 from dds_core.application.dependency_checker import DependencyChecker
 from dds_core.application.document_cache import DocumentCache
 from dds_core.application.document_metadata_service import (
@@ -162,6 +158,9 @@ from dds_core.infrastructure.sqlite_adapter import SQLiteAdapter
 from dds_core.infrastructure.sqlite_reference_repository import (
     SqliteReferenceRepository,
 )
+from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from .api import APIContext, set_context
 from .api import router as api_router
@@ -230,7 +229,7 @@ def load_config(config_path: str) -> dict:
             f"Скопируйте config.json.example в config.json "
             f"и измените параметры."
         )
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -812,7 +811,7 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
                     auth_svc.cleanup_expired_sessions()
                 except asyncio.CancelledError:
                     break
-                except Exception:  # noqa: BLE001, S110
+                except Exception:
                     pass
 
         session_cleanup = asyncio.create_task(
@@ -828,7 +827,7 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
         try:
             components["scan_orchestrator"].reset_stale_running_scans()
             print("INFO:     Зависшие записи сканирования сброшены")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"  ✗ Ошибка сброса зависших записей: {e}")
 
         # Шаг 12: Создание сервисов предпросмотра документа.
@@ -919,7 +918,7 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
         try:
             components_shutdown["scan_orchestrator"].cancel_scan()
             print("INFO:     Отмена сканирования запрошена")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"  ✗ Ошибка отмены сканирования: {e}")
 
         scan_task = ctx.get_scan_task()
@@ -943,13 +942,13 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
                     pass
             except asyncio.CancelledError:
                 print("  ! Задача сканирования была отменена.")
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 print(f"  ✗ Ошибка при ожидании задачи: {e}")
 
         try:
             components_shutdown["module_lifecycle"].shutdown_all()
             print("INFO:     Модули остановлены")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"  ✗ Ошибка остановки модулей: {e}")
 
         # Очистка кэша индексов слов.
@@ -957,7 +956,7 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
             try:
                 word_index_cache_shutdown.clear()
                 print("INFO:     Кэш индексов слов очищен")
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 print(f"  ✗ Ошибка очистки кэша индексов слов: {e}")
 
         # Завершение пулов: wait=True — дождаться завершения активных
@@ -969,13 +968,13 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
             scan_executor_shutdown.shutdown(wait=True, cancel_futures=True)
             extract_executor_shutdown.shutdown(wait=True, cancel_futures=True)
             print("INFO:     Пулы потоков и процессов завершены")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"  ✗ Ошибка завершения пулов: {e}")
 
         try:
             components_shutdown["db"].close()
             print("INFO:     Соединение с БД закрыто")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"  ✗ Ошибка закрытия БД: {e}")
 
         event_bus_shutdown.publish(
@@ -989,13 +988,13 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
         try:
             await logging_subscriber_shutdown.stop()
             print("INFO:     Подписчик логирования остановлен")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"  ✗ Ошибка остановки подписчика логирования: {e}")
 
         try:
             await event_bus_shutdown.stop()
             print("INFO:     Шина событий остановлена")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"  ✗ Ошибка остановки шины событий: {e}")
 
         set_context(None)

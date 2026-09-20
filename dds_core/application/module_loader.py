@@ -306,7 +306,7 @@ class ModuleLoader:
         # Шаг 4: Инициализация
         try:
             module.initialize(module_config)
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Откат: попытка cleanup
             self._rollback_module(module, manifest)
             raise RuntimeError(f"Модуль '{manifest.module_name}': ошибка инициализации.")
@@ -369,7 +369,7 @@ class ModuleLoader:
         if module is not None:
             try:
                 module.shutdown()
-            except Exception:  # noqa: BLE001, S110
+            except Exception:
                 # Подавление ошибки: модуль выгружается
                 # независимо от результата shutdown.
                 pass
@@ -502,7 +502,7 @@ class ModuleLoader:
             json.JSONDecodeError: Если файл не является валидным JSON.
             KeyError: Если обязательный ключ отсутствует.
         """
-        with open(manifest_path, "r", encoding="utf-8") as f:
+        with open(manifest_path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Обязательные поля
@@ -627,12 +627,12 @@ class ModuleLoader:
         """
         try:
             module.cleanup()
-        except Exception:  # noqa: BLE001
+        except Exception:
             # cleanup() не удался — удаляем таблицы напрямую
             for table_name in manifest.managed_tables:
                 try:
                     self._db.execute_write(f"DROP TABLE IF EXISTS {table_name}")
-                except Exception:  # noqa: BLE001, S110
+                except Exception:
                     pass
 
     def _apply_migrations(
@@ -699,7 +699,7 @@ class ModuleLoader:
 
             try:
                 self._db.execute_write(migrations[target_version])
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # Записать статус MIGRATION_ERROR
                 self.update_module_status(
                     manifest.module_name,

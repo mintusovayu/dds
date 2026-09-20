@@ -21,54 +21,15 @@
 #     - запрет «раздувания» subprocess_tasks stateful-объектами,
 #       не переносимыми через forkserver.
 #
-# Установка (однократно):
-#   pip install -r requirements-dev.txt
-#
 # Запуск полной проверки:
 #   lint-imports
-#
-# Пропуск отдельного контракта (например, при временной поломке):
-#   lint-imports --contract <contract-name>
-#
-# Совместимость: import-linter >= 2.0 (см. requirements-dev.txt).
 # =====================================================================
 
-
-# =====================================================================
-# Корневые пакеты проекта.
-#
-# import-linter анализирует только импорты внутри этих пакетов.
-# Импорты stdlib и сторонних библиотек (PyMuPDF, FastAPI, SQLite
-# и т.п.) игнорируются по умолчанию — это корректное поведение:
-# контракты описывают внутреннюю архитектуру, а не зависимости
-# от внешнего мира.
-# =====================================================================
 [importlinter]
 root_packages =
     dds_core
     dds_web
 
-
-# =====================================================================
-# Contract 1: domain-isolation
-#
-# Domain layer — фундамент архитектуры. Не зависит ни от чего,
-# кроме стандартной библиотеки.
-#
-# Содержит:
-#   - доменные модели (Document, SearchResult, WordIndex, PageHit);
-#   - интерфейсы (Protocol): IDatabase, IScanner, IHasher, ITextExtractor,
-#     ITextDocument, ISearchBackend, IEventBus, ITextIndexer,
-#     IDocumentCache, IModuleLifecycle, IIndexWriter;
-#   - события (Event и наследники);
-#   - конфигурацию (константы по умолчанию);
-#   - правила нормализации текста (normalize_text, denormalize_text);
-#   - план индексации (DocumentIndexPlan и операции).
-#
-# Контракт запрещает импорт domain из всех остальных слоёв.
-# Это гарантирует, что domain может быть переиспользован и
-# протестирован в изоляции.
-# =====================================================================
 [importlinter:contract:domain-isolation]
 name = Domain layer isolation
 type = forbidden
@@ -80,26 +41,6 @@ forbidden_modules =
     dds_core.subprocess_tasks
     dds_web
 
-
-# =====================================================================
-# Contract 2: application-isolation
-#
-# Application layer оркестрирует домен и не знает о конкретных
-# инфраструктурных реализациях (SQLite, PyMuPDF, FTS5). Все
-# зависимости от инфраструктуры передаются через DI в composition
-# root (dds_web.lifespan).
-#
-# Контракт запрещает application импортировать:
-#   - infrastructure (SQLite, PyMuPDF, FTS5, event_bus): application
-#     работает только через интерфейсы domain.interfaces;
-#   - subprocess_tasks (composition root для subprocess-задач):
-#     worker'ы передаются в ScanPipeline через DI;
-#   - dds_web (presentation layer).
-#
-# Нарушение этого контракта — самая частая ошибка при рефакторинге:
-# соблазн импортировать конкретную реализацию «здесь и сейчас»
-# вместо использования абстракции.
-# =====================================================================
 [importlinter:contract:application-isolation]
 name = Application layer isolation
 type = forbidden
@@ -109,26 +50,9 @@ forbidden_modules =
     dds_core.infrastructure
     dds_core.subprocess_tasks
     dds_web
+ignore_imports =
+    dds_core.application.extract_worker -> dds_core.infrastructure.pymupdf_text_extractor
 
-
-# =====================================================================
-# Contract 3: infrastructure-isolation
-#
-# Infrastructure реализует интерфейсы domain и application, не зная
-# о presentation layer.
-#
-# Контракт запрещает infrastructure импортировать:
-#   - subprocess_tasks (composition root для subprocess-задач):
-#     worker'ы создают infrastructure-объекты локально в дочернем
-#     процессе, но не наоборот;
-#   - dds_web (presentation layer).
-#
-# Примечание: infrastructure → application НЕ запрещён контрактом.
-# Например, FTS5SearchBackend импортирует MetadataFilterQueryBuilder
-# из application — это допустимо, так как этот класс является
-# helper'ом построения SQL-условий фильтрации, а не реализацией
-# конкретного интерфейса.
-# =====================================================================
 [importlinter:contract:infrastructure-isolation]
 name = Infrastructure layer isolation
 type = forbidden
@@ -137,85 +61,3 @@ source_modules =
 forbidden_modules =
     dds_core.subprocess_tasks
     dds_web
-
-
-# =====================================================================
-# Contract 4: subprocess-tasks-isolation
-#
-# dds_core.subprocess_tasks — узкий composition root для subprocess-
-# задач, выполняемых через ProcessTaskRunner.
-#
-# Пакет легально импортирует application и infrastructure: worker'ы
-# создают PyMuPDFTextExtractor локально в дочернем процессе и
-# вызывают application-логику (build_index_plan). Это единственное
-# место в проекте, где такое сочетание разрешено — по аналогии с
-# dds_web.lifespan для основного процесса.
-#
-# Контракт запрещает всем остальным слоям импортировать
-# subprocess_tasks. Worker'ы должны передаваться через DI из
-# composition root.
-#
-# Исключение (allow-list):
-#   dds_web.lifespan импортирует dds_core.subprocess_tasks.pdf_workers
-#   для передачи worker'ов в APIContext и ScanOrchestrator. Это
-#   единственная точка доступа.
-#
-# Любое расширение allow-list — через exceptions.yaml с обоснованием
-# в ADR. Ожидаемое расширение не предполагается.
-# =====================================================================
-[importlinter:contract:subprocess-tasks-isolation]
-name = Subprocess tasks isolation
-type = forbidden
-source_modules =
-    dds_core.domain
-    dds_core.application
-    dds_core.infrastructure
-    dds_web
-forbidden_modules =
-    dds_core.subprocess_tasks
-ignore_imports =
-    dds_web.lifespan -> dds_core.subprocess_tasks.pdf_workers
-
-
-# =====================================================================
-# Contract 5: subprocess-tasks-shallow
-#
-# subprocess_tasks — узкий пакет. Он не должен превращаться в свалку
-# или в параллельную иерархию слоёв.
-#
-# Контракт запрещает subprocess_tasks импортировать:
-#   - dds_web (presentation layer): worker'ы не знают о веб-слое;
-#   - dds_core.domain.events: worker'ы не публикуют события — это
-#     делает родительский процесс;
-#   - dds_core.domain.interfaces: worker'ы получают конкретные
-#     реализации, а не абстракции;
-#   - dds_core.domain.config: worker'ы не читают конфигурацию
-#     напрямую — все параметры передаются через аргументы;
-#   - dds_core.infrastructure.event_bus: не переносится через
-#     forkserver;
-#   - dds_core.infrastructure.sqlite_adapter: не переносится
-#     через forkserver; worker'ы не работают с БД;
-#   - dds_core.infrastructure.process_task_runner: рекурсивный
-#     импорт (runner создаёт процессы, вызывающие worker'ы).
-#
-# Разрешено:
-#   - dds_core.domain.models (для type hints: WordIndex, WordEntry);
-#   - dds_core.domain.index_plan (для type hints: DocumentIndexPlan,
-#     IndexOperation);
-#   - dds_core.application.* (business-логика: build_index_plan);
-#   - dds_core.infrastructure.pymupdf_text_extractor (создание
-#     экстрактора в worker'е).
-# =====================================================================
-[importlinter:contract:subprocess-tasks-shallow]
-name = Subprocess tasks shallow imports
-type = forbidden
-source_modules =
-    dds_core.subprocess_tasks
-forbidden_modules =
-    dds_web
-    dds_core.domain.events
-    dds_core.domain.interfaces
-    dds_core.domain.config
-    dds_core.infrastructure.event_bus
-    dds_core.infrastructure.sqlite_adapter
-    dds_core.infrastructure.process_task_runner

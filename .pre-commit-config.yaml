@@ -61,10 +61,11 @@ default_stages: [pre-commit]
 # а не только первую. Экономит время разработчика.
 fail_fast: false
 
-# Версия Python по умолчанию для хуков с language: python.
-# Соответствует минимальной поддерживаемой версии DDS.
-default_language_version:
-  python: python3.12
+# Версия Python для хуков: НЕ указана жёстко.
+# Pre-commit использует интерпретатор, из которого запущен,
+# то есть Python активного venv. Это устраняет жёсткую привязку
+# к конкретной минорной версии и позволяет работать на любой
+# поддерживаемой версии (3.12+).
 
 
 # =====================================================================
@@ -159,7 +160,7 @@ repos:
   #   не углубляясь в импортированные модули (быстрее).
   # ---------------------------------------------------------------------
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.7.1
+    rev: v1.13.0
     hooks:
       - id: mypy
         args:
@@ -219,7 +220,9 @@ repos:
           Проверяет направление зависимостей между слоями согласно
           сгенерированному .importlinter.
         entry: lint-imports
-        language: system
+        language: python
+        additional_dependencies:
+          - import-linter>=2.0
         files: \.py$
         pass_filenames: false
 

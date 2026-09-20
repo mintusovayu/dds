@@ -593,7 +593,7 @@ class ScanOrchestrator:
             # Пробросить CancelledError для предотвращения
             # продолжения вторичного сканирования.
             raise
-        except Exception:  # noqa: BLE001
+        except Exception:
             progress = ScanProgress(
                 phase=ScanPhase.PRIMARY,
                 status=ScanStatus.ERROR,
@@ -1257,7 +1257,7 @@ class ScanOrchestrator:
         # Сканировать каталог РД
         try:
             files = self._scanner.scan_directory(rd_directory)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return IndexStatus(
                 state=IndexState.EMPTY,
                 total_files_in_directory=0,
@@ -1303,7 +1303,7 @@ class ScanOrchestrator:
                         duplicate_files_on_disk += 1
                     else:
                         new_files += 1
-                except Exception:  # noqa: BLE001
+                except Exception:
                     # Если не удалось хешировать (битый файл), считаем новым/ошибочным
                     new_files += 1
                 continue
@@ -1321,7 +1321,7 @@ class ScanOrchestrator:
             # Метаданные изменились, проверяем хеш
             try:
                 current_hash = self._hasher.compute_hash(file_path)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 modified_files += 1
                 continue
 

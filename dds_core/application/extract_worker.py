@@ -72,5 +72,5 @@ def extract_document_queries(
             abs_file_path=abs_file_path,
             text_extractor=extractor,
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None

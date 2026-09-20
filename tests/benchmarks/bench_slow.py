@@ -1,0 +1,655 @@
+"""
+Медленный бенчмарк полного сканирования каталога DDS.
+
+Назначение
+----------
+Замер времени выполнения полного цикла ``ScanPipeline.run_async``:
+обход каталога, ленивое хеширование, извлечение текста через
+``ProcessTaskRunner`` (process-per-task + forkserver), батчевая
+запись в SQLite. Датасет — каталог PDF-файлов, сгенерированный
+на лету через PyMuPDF.
+
+Метрика: ``test_scan_full_1000_pdfs`` (соответствует ключу
+``scan_full`` в ``baseline.json``).
+
+Статус активации (Фаза 0)
+-------------------------
+Тест ``test_scan_full_1000_pdfs`` помечен ``@pytest.mark.skip``
+и будет активирован в **Фазе 5** плана рефакторинга v9. До этого
+момента он зависит от API, которого ещё нет в проекте:
+
+- ``ProcessTaskRunner`` (появляется в Фазе 4);
+- ``DocumentIndexPlan`` и обновлённые сигнатуры
+  ``TextIndexer.__init__(index_writer=...)`` и
+  ``ScanPipeline.__init__(process_runner=..., index_plan_worker=...)``
+  (появляются в Фазе 5);
+- ``build_index_plan_in_subprocess`` (появляется в Фазе 5).
+
+Инфраструктура fixtures (датасет PDF, event bus, executors,
+конфигурация окружения) полностью готова и не зависит от
+будущих API. При активации в Фазе 5 достаточно:
+
+1. Снять ``@pytest.mark.skip`` с теста и фикстуры ``process_runner``.
+2. Восстановить удалённые импорты (см. блок «Импорты, которые
+   будут добавлены в Фазе 5» в docstring теста).
+3. Вернуть тело теста.
+
+Причины такой организации описаны в общем плане Фазы 0:
+заделы на будущие фазы не должны создавать ошибок статического
+анализа или шума в pre-commit.
+
+Почему отдельный файл от ``bench_fast.py``
+------------------------------------------
+- **Длительность.** Один прогон ~2 минуты; 3 прогона + setup
+  ≈ 10–15 минут. Это в 5–10 раз дороже быстрых бенчмарков.
+- **Триггеры.** Запускается только на push в main, по расписанию
+  (еженедельно) и opt-in через метку ``bench-slow`` на PR.
+  Fast-benchmarks запускаются на каждый PR.
+- **Бюджет времени.** Отдельный ``timeout-minutes: 60`` в workflow
+  против 25 у ``bench.yml``.
+
+Датасет
+-------
+Каталог с ``DDS_BENCH_SCAN_DOCS`` (по умолчанию 1000) PDF-файлами,
+сгенерированными в ``tmp_path_factory``. Каждый файл — одна страница
+A4 с текстом из 40–80 слов (детерминированный random с seed
+``DDS_BENCH_SCAN_SEED``). Содержимое файлов различается, что
+гарантирует уникальность хешей и отсутствие ложных срабатываний
+duplicate-detection.
+
+Датасет **не коммитится** в репозиторий — экономия ~50–100 МБ.
+Параметры генерации фиксированы через env-переменные; между
+прогонами датасет переиспользуется (fixture session-scoped).
+
+Ключевая особенность замеров
+----------------------------
+Свежая БД для каждого прогона. После генерации датасета файлы
+сохраняют метаданные (mtime, размер), но каждый вызов
+``scan_once`` создаёт новую SQLite-БД и новую схему. Это гарантирует:
+
+1. **Ленивое хеширование не пропускает файлы.** Нет cached
+   metadata → все файлы хешируются.
+2. **Извлечение текста выполняется для всех файлов.** Нет
+   зарегистрированных хешей → все файлы «новые».
+3. **Полная запись в БД.** Ничего не пропускается как duplicate.
+
+Без сброса БД второй прогон увидел бы все файлы как
+``SKIPPED_UNCHANGED`` и завершился бы за секунды, а не за минуты —
+замер стал бы бессмысленным.
+
+Event bus
+---------
+``AsyncEventBus`` создаётся в session-fixture **не запущенным**
+(``start()`` не вызывается). Публикация событий в unstarted bus —
+no-op (см. ``AsyncEventBus.publish``). Это осознанное решение:
+
+- **Изоляция workload.** Замеряется работа ``ScanPipeline``,
+  а не overhead публикации событий (в production подписчик
+  ``LoggingSubscriber`` создаёт дополнительную нагрузку, но её
+  измерение — отдельная задача).
+- **Упрощение fixture.** Не требуется асинхронный
+  ``start()``/``stop()`` в setup/teardown.
+- **Детерминизм.** Отсутствие подписчиков исключает влияние
+  порядка обработки событий на замер.
+
+Методология замеров
+-------------------
+``benchmark.pedantic(scan_once, rounds=3, iterations=1)`` —
+детерминированное число прогонов (3). CLI-workflow дополнительно
+передаёт ``--benchmark-min-rounds=3``, но pedantic устанавливает
+значение независимо от CLI (важно для запуска локально без флагов).
+
+Почему не авто-калибровка (обычный ``benchmark(fn)``): она
+вызывает функцию несколько раз подряд для оценки стабильности.
+При 2 минутах на прогон это неприемлемо — потеря 10–20 минут на
+калибровку.
+
+Warmup выключен (``--benchmark-warmup=off`` в workflow): scan.full
+включает I/O и межпроцессное взаимодействие; прогрев не устранит
+дисперсию от файлового кэша ОС.
+
+GC отключён во время замера (``--benchmark-disable-gc``).
+
+Пороги деградации (проверяются в CI)
+------------------------------------
+- ≤ 15% (или p ≥ 0.05) — OK.
+- > 15%, p < 0.05 — WARNING (не блокирует merge).
+- > 30%, p < 0.05 — FAIL (блокирует merge).
+
+Сравнение через Mann-Whitney U test (``scipy.stats.mannwhitneyu``),
+two-sided. При n = 3 с каждой стороны — минимально допустимый
+размер выборки для непараметрического теста.
+
+Ограничения
+-----------
+1. **Все ресурсы временные.** PDF-датасет и БД — в ``tmp_path``.
+   Никаких записей в production-``rd_directory`` или
+   ``dds_database.db``.
+2. **Детерминированный датасет.** Random с фиксированным seed;
+   параметры через ``DDS_BENCH_*``.
+3. **Event bus не запущен.** См. выше.
+4. **Session-scoped event loop.** ``ProcessTaskRunner._global``
+   (``asyncio.Semaphore``) привязывается к первому loop'у при
+   первом использовании. Все прогоны используют один loop.
+5. **One-shot процесс.** Раз в сессию создаётся ``ProcessTaskRunner``
+   с ``max_concurrent = PROCESS_RUNNER_MAX_CONCURRENT`` (появится
+   в Фазе 4); закрывается в teardown fixture.
+6. **Reference-справочники не заполняются.** Бенчмарк не использует
+   ``DocumentMetadataService`` (обновление метаданных — отдельный
+   этап вторичного сканирования, замеряется вне этого файла).
+7. **Модуль не выполняет assert'ов бизнес-логики.** Assert'ы —
+   только для валидации setup (status, total_files).
+
+Запуск
+------
+::
+
+    pytest tests/benchmarks/bench_slow.py \\
+        --benchmark-min-rounds=3 \\
+        --benchmark-warmup=off \\
+        --benchmark-disable-gc
+
+Локально для быстрой отладки можно уменьшить датасет::
+
+    DDS_BENCH_SCAN_DOCS=50 pytest tests/benchmarks/bench_slow.py
+
+Принципы:
+    - Модуль не выполняет логирования;
+    - не читает и не пишет production-файлы;
+    - не содержит изменяемого состояния между вызовами;
+    - все ассерты — валидация setup, не бизнес-логики.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import itertools
+import os
+import random
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from typing import Any
+
+import pymupdf
+import pytest
+from dds_core.infrastructure.event_bus import AsyncEventBus
+from dds_core.infrastructure.file_hasher import FileHasher
+from dds_core.infrastructure.file_scanner import DirectoryScanner
+
+# ----------------------------------------------------------------------
+# Импорты, которые будут восстановлены в Фазе 5
+# ----------------------------------------------------------------------
+#
+# При активации теста ``test_scan_full_1000_pdfs`` сюда вернутся:
+#
+#   from dds_core.application.indexer import TextIndexer
+#   from dds_core.application.scan_pipeline import ScanPipeline
+#   from dds_core.domain import config
+#   from dds_core.domain.models import ScanStatus
+#   from dds_core.infrastructure.database import DatabaseManager
+#   from dds_core.infrastructure.process_task_runner import ProcessTaskRunner
+#   from dds_core.infrastructure.sqlite_adapter import SQLiteAdapter
+#   from dds_core.subprocess_tasks.pdf_workers import (
+#       build_index_plan_in_subprocess,
+#   )
+#
+# До Фазы 5 они удалены: модули ``process_task_runner`` и
+# ``subprocess_tasks.pdf_workers`` ещё не существуют, а остальные
+# используются только в отложенном теле теста.
+# ----------------------------------------------------------------------
+
+
+# =====================================================================
+# Константы
+# =====================================================================
+
+_SCAN_DOCS_DEFAULT = 1000
+"""Количество PDF-файлов в датасете по умолчанию."""
+
+_SCAN_SEED_DEFAULT = 42
+"""Seed генератора датасета по умолчанию (детерминизм)."""
+
+_WORDS_MIN = 40
+"""Минимальное число слов на странице PDF."""
+
+_WORDS_MAX = 80
+"""Максимальное число слов на странице PDF."""
+
+_A4_WIDTH_PT = 595.0
+"""Ширина страницы A4 в PDF-points."""
+
+_A4_HEIGHT_PT = 842.0
+"""Высота страницы A4 в PDF-points."""
+
+_WORDS_CORPUS: tuple[str, ...] = (
+    # Набор слов для генерации текста. Разнообразие необходимо,
+    # чтобы содержимое PDF различалось и хеши были уникальны.
+    "корпус",
+    "гидрошпонка",
+    "дробление",
+    "фундамент",
+    "изоляция",
+    "монтаж",
+    "схема",
+    "узел",
+    "сечение",
+    "разрез",
+    "план",
+    "проект",
+    "чертёж",
+    "спецификация",
+    "ведомость",
+    "арматура",
+    "бетон",
+    "опалубка",
+    "стык",
+    "шов",
+)
+
+
+# =====================================================================
+# Утилиты генерации датасета
+# =====================================================================
+
+
+def _make_sentence(rng: random.Random, words_count: int) -> str:
+    """Генерирует строку из ``words_count`` случайных слов.
+
+    Слова берутся из :data:`_WORDS_CORPUS` с равномерным
+    распределением. Используется как содержимое PDF-страницы.
+
+    Args:
+        rng: Экземпляр ``random.Random`` с фиксированным seed.
+        words_count: Количество слов в строке.
+
+    Returns:
+        Строка из слов, разделённых пробелами.
+    """
+    return " ".join(rng.choice(_WORDS_CORPUS) for _ in range(words_count))
+
+
+def _generate_pdf_corpus(directory: Path, count: int, seed: int) -> None:
+    """Создаёт каталог с ``count`` PDF-файлами.
+
+    Каждый файл — одна страница A4 с текстом из
+    :data:`_WORDS_MIN`–:data:`_WORDS_MAX` слов. Текст размещается
+    блоками по 10 слов на строку; координаты фиксированы. Random
+    с seed ``seed`` обеспечивает детерминизм между прогонами.
+
+    Файлы именуются ``doc_000000.pdf``… ``doc_<count-1>.pdf`` и
+    располагаются в подкаталогах по 100 штук
+    (``dir_000/``, ``dir_001/``, …) — имитация реального каталога
+    РД с разделами.
+
+    Операции:
+
+    +---+-----------------------------------------------------+
+    | № | Описание                                            |
+    +===+=====================================================+
+    | 1 | Создание корневого каталога.                        |
+    +---+-----------------------------------------------------+
+    | 2 | Создание подкаталогов по 100 файлов (при count>100).|
+    +---+-----------------------------------------------------+
+    | 3 | Цикл по ``count``:                                   |
+    |   | a. Создание документа PyMuPDF.                      |
+    |   | b. Добавление страницы A4.                          |
+    |   | c. Генерация текста (детерминированный rng).        |
+    |   | d. Разбиение на строки по 10 слов.                  |
+    |   | e. Сохранение файла.                                |
+    |   | f. Закрытие документа.                              |
+    +---+-----------------------------------------------------+
+
+    Args:
+        directory: Корневой каталог для датасета.
+        count: Количество PDF-файлов.
+        seed: Seed для генератора случайных чисел.
+
+    Raises:
+        OSError: При ошибке записи файла.
+        pymupdf.FileDataError: При ошибке создания PDF.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    rng = random.Random(seed)
+
+    subdirs: list[Path] = []
+    for i in range(count):
+        if i % 100 == 0:
+            sub = directory / f"dir_{i // 100:03d}"
+            sub.mkdir(exist_ok=True)
+            subdirs.append(sub)
+        path = subdirs[-1] / f"doc_{i:06d}.pdf"
+
+        words_count = rng.randint(_WORDS_MIN, _WORDS_MAX)
+        text = _make_sentence(rng, words_count)
+
+        doc = pymupdf.open()
+        try:
+            page = doc.new_page(
+                width=_A4_WIDTH_PT,
+                height=_A4_HEIGHT_PT,
+            )
+            tokens = text.split()
+            x0 = 40.0
+            y = 60.0
+            line_height = 12.0
+            for chunk_start in range(0, len(tokens), 10):
+                line = " ".join(tokens[chunk_start : chunk_start + 10])
+                page.insert_text((x0, y), line, fontsize=9)
+                y += line_height
+            doc.save(str(path))
+        finally:
+            doc.close()
+
+
+# =====================================================================
+# Fixtures
+# =====================================================================
+
+
+@pytest.fixture(scope="session")
+def bench_tmp_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Корневой временный каталог для бенчмарка.
+
+    Создаётся один раз на сессию через ``tmp_path_factory``.
+    pytest автоматически очищает каталог по завершении сессии.
+
+    Args:
+        tmp_path_factory: Встроенная фикстура pytest.
+
+    Returns:
+        Путь к временному каталогу.
+    """
+    return tmp_path_factory.mktemp("dds_bench_slow")
+
+
+@pytest.fixture(scope="session")
+def bench_event_loop() -> Iterator[asyncio.AbstractEventLoop]:
+    """Session-scoped event loop для async-бенчмарков и fixtures.
+
+    Все прогоны используют один и тот же loop, потому что
+    ``ProcessTaskRunner._global`` (``asyncio.Semaphore``)
+    привязывается к первому loop'у при использовании. Создание
+    нового loop'а для каждого прогона привело бы к
+    ``RuntimeError: ... is bound to a different event loop``.
+
+    Дополнительно loop используется для graceful shutdown
+    ``ProcessTaskRunner`` в teardown одноимённой fixture.
+
+    Yields:
+        Открытый event loop.
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        yield loop
+    finally:
+        loop.close()
+
+
+@pytest.fixture(scope="session")
+def scan_docs_count() -> int:
+    """Количество PDF-файлов в датасете.
+
+    Читается из ``DDS_BENCH_SCAN_DOCS`` (по умолчанию
+    :data:`_SCAN_DOCS_DEFAULT`). Используется также в тесте
+    для валидации setup (``progress.total_files``).
+
+    Returns:
+        Число PDF-файлов.
+    """
+    return int(os.environ.get("DDS_BENCH_SCAN_DOCS", str(_SCAN_DOCS_DEFAULT)))
+
+
+@pytest.fixture(scope="session")
+def scan_seed() -> int:
+    """Seed генератора датасета.
+
+    Читается из ``DDS_BENCH_SCAN_SEED`` (по умолчанию
+    :data:`_SCAN_SEED_DEFAULT`). Детерминизм между прогонами —
+    критично для сопоставимости baseline-сравнений.
+
+    Returns:
+        Seed.
+    """
+    return int(os.environ.get("DDS_BENCH_SCAN_SEED", str(_SCAN_SEED_DEFAULT)))
+
+
+@pytest.fixture(scope="session")
+def pdf_corpus(
+    bench_tmp_root: Path,
+    scan_docs_count: int,
+    scan_seed: int,
+) -> Path:
+    """Каталог PDF-файлов для сканирования.
+
+    Генерируется один раз на сессию. Между прогонами не
+    пересоздаётся: файлы и их метаданные (mtime, размер) стабильны,
+    что позволяет корректно тестировать lazy hashing (metadata
+    совпадают между прогонами; отличается только содержимое БД).
+
+    Args:
+        bench_tmp_root: Временный каталог.
+        scan_docs_count: Количество файлов.
+        scan_seed: Seed генератора.
+
+    Returns:
+        Путь к каталогу с PDF-файлами.
+    """
+    corpus_dir = bench_tmp_root / "rd_corpus"
+    _generate_pdf_corpus(corpus_dir, count=scan_docs_count, seed=scan_seed)
+    return corpus_dir
+
+
+@pytest.fixture(scope="session")
+def scan_executor() -> Iterator[ThreadPoolExecutor]:
+    """ThreadPoolExecutor для блокирующих операций ScanPipeline.
+
+    Используется для: обхода каталога, хеширования файлов, записей
+    в БД. Размер — :data:`config.SCAN_EXECUTOR_MAX_WORKERS` (по
+    умолчанию 6). Согласовано с production-конфигурацией, чтобы
+    издержки совпадали.
+
+    Yields:
+        Настроенный ThreadPoolExecutor.
+    """
+    # Локальное значение, чтобы избежать импорта config до Фазы 5.
+    # В Фазе 5 заменить на config.SCAN_EXECUTOR_MAX_WORKERS.
+    executor = ThreadPoolExecutor(
+        max_workers=6,
+        thread_name_prefix="bench-scan",
+    )
+    try:
+        yield executor
+    finally:
+        executor.shutdown(wait=True, cancel_futures=True)
+
+
+@pytest.fixture(scope="session")
+def process_runner() -> Iterator[Any]:
+    """ProcessTaskRunner для извлечения текста.
+
+    Активируется в **Фазе 4**, когда появится
+    ``dds_core/infrastructure/process_task_runner.py``. До этого
+    момента фикстура помечена как skip-заглушка: тест
+    ``test_scan_full_1000_pdfs`` не запускается, но его зависимости
+    остаются задекларированы.
+
+    Параметры production-варианта (будут заданы после Фазы 4):
+
+    - ``max_concurrent = PROCESS_RUNNER_MAX_CONCURRENT`` (6);
+    - ``batch_slots = PROCESS_RUNNER_BATCH_SLOTS`` (4);
+    - контекст ``forkserver`` на Linux, ``spawn`` на других ОС;
+    - graceful shutdown через ``await runner.close(...)`` в
+      session-scoped event loop.
+
+    Yields:
+        Заглушка (не используется до Фазы 4).
+    """
+    pytest.skip("activated in phase 4 (ProcessTaskRunner)")
+    yield None
+
+
+@pytest.fixture(scope="session")
+def event_bus() -> AsyncEventBus:
+    """AsyncEventBus в неработающем состоянии.
+
+    Публикация событий в unstarted bus — no-op (см.
+    ``AsyncEventBus.publish``: ранний ``return`` при
+    ``self._loop is None or not self._running``). Это осознанное
+    решение для изоляции замеряемого workload'а от overhead'а
+    публикации событий и обработки подписчиками.
+
+    Подробнее — в модульном docstring, раздел «Event bus».
+
+    Returns:
+        Экземпляр AsyncEventBus без запущенного loop'а.
+    """
+    return AsyncEventBus(max_queue_size=1000)
+
+
+@pytest.fixture(scope="session")
+def directory_scanner() -> DirectoryScanner:
+    """Сканер каталога для ScanPipeline."""
+    return DirectoryScanner()
+
+
+@pytest.fixture(scope="session")
+def file_hasher() -> FileHasher:
+    """Хешер файлов для ScanPipeline."""
+    return FileHasher()
+
+
+# =====================================================================
+# Бенчмарк
+# =====================================================================
+
+
+@pytest.mark.skip(reason="activated in phase 5 (ProcessTaskRunner, DocumentIndexPlan)")
+def test_scan_full_1000_pdfs(
+    benchmark: Any,
+    pdf_corpus: Path,
+    scan_docs_count: int,
+    bench_event_loop: asyncio.AbstractEventLoop,
+    scan_executor: ThreadPoolExecutor,
+    process_runner: Any,
+    event_bus: AsyncEventBus,
+    directory_scanner: DirectoryScanner,
+    file_hasher: FileHasher,
+    tmp_path: Path,
+) -> None:
+    """Полное сканирование каталога PDF (по умолчанию 1000 файлов).
+
+    Активируется в **Фазе 5**, когда появятся:
+
+    - ``ProcessTaskRunner`` (Фаза 4);
+    - ``DocumentIndexPlan`` и обновлённые сигнатуры
+      ``TextIndexer.__init__(index_writer=...)``,
+      ``ScanPipeline.__init__(process_runner=..., index_plan_worker=...)``
+      (Фаза 5);
+    - ``build_index_plan_in_subprocess`` (Фаза 5).
+
+    До этого момента тест пропускается через ``pytest.mark.skip``;
+    тело содержит только заглушку, а зависимости от будущего API
+    исключены из импортов модуля (см. блок «Импорты, которые будут
+    восстановлены в Фазе 5» в начале файла).
+
+    Что будет замеряться после активации:
+
+    Полный цикл ``ScanPipeline.run_async`` — обход каталога, ленивое
+    хеширование, извлечение текста через ``ProcessTaskRunner``
+    (process-per-task + forkserver), батчевая запись в SQLite
+    через ``SAVEPOINT``.
+
+    Каждый прогон будет создавать **свежую БД** (см. модульный
+    docstring, раздел «Ключевая особенность замеров»). Без сброса
+    БД второй прогон увидел бы все файлы как ``SKIPPED_UNCHANGED``
+    и завершился бы за секунды.
+
+    Датасет PDF переиспользуется между прогонами (session-scoped
+    fixture ``pdf_corpus``): метаданные файлов стабильны, что
+    изолирует влияние файлового кэша ОС на замер.
+
+    Используется ``benchmark.pedantic(rounds=3, iterations=1)`` —
+    детерминированное число прогонов. Авто-калибровка (обычный
+    ``benchmark(fn)``) неприемлема: при 2 минутах на прогон
+    она тратила бы 10–20 минут.
+
+    Валидация setup (assert'ы не измеряются, выполняются после
+    бенчмарка):
+
+    - ``status == COMPLETED`` — сканирование не упало и не
+      было прервано;
+    - ``total_files == scan_docs_count`` — все файлы датасета
+      обработаны.
+
+    Args:
+        benchmark: Фикстура pytest-benchmark. Тип не известен
+            статически (pytest-benchmark не публикует stubs),
+            аннотирован как ``Any``.
+        pdf_corpus: Каталог с PDF-файлами.
+        scan_docs_count: Ожидаемое количество файлов.
+        bench_event_loop: Session-scoped event loop.
+        scan_executor: ThreadPoolExecutor для блокирующих операций.
+        process_runner: ProcessTaskRunner (заглушка до Фазы 4).
+        event_bus: AsyncEventBus (не запущен).
+        directory_scanner: Сканер каталога.
+        file_hasher: Хешер файлов.
+        tmp_path: Функционально-уникальный временный каталог pytest.
+    """
+    # Тело метода активируется в Фазе 5. Структура, которую нужно
+    # будет восстановить:
+    #
+    #   counter = itertools.count()
+    #   loop = bench_event_loop
+    #
+    #   def scan_once() -> ScanStatus:
+    #       idx = next(counter)
+    #       db_path = tmp_path / f"scan_{idx:03d}.db"
+    #
+    #       adapter = SQLiteAdapter(str(db_path))
+    #       try:
+    #           DatabaseManager(adapter).ensure_all()
+    #           indexer = TextIndexer(index_writer=adapter)
+    #           pipeline = ScanPipeline(
+    #               db=adapter,
+    #               scanner=directory_scanner,
+    #               hasher=file_hasher,
+    #               indexer=indexer,
+    #               event_bus=event_bus,
+    #               process_runner=process_runner,
+    #               index_plan_worker=build_index_plan_in_subprocess,
+    #               max_hash_workers=4,
+    #               max_extract_workers=6,
+    #               scan_executor=scan_executor,
+    #               document_cache=None,
+    #           )
+    #           progress = loop.run_until_complete(
+    #               pipeline.run_async(
+    #                   rd_directory=str(pdf_corpus),
+    #                   scan_id=idx + 1,
+    #                   correlation_id=f"bench-scan-{idx}",
+    #               )
+    #           )
+    #           return progress.status
+    #       finally:
+    #           adapter.close()
+    #
+    #   status = benchmark.pedantic(scan_once, rounds=3, iterations=1)
+    #   assert status == ScanStatus.COMPLETED
+    #
+    # Соответствующие импорты перечислены в блоке комментариев
+    # в начале модуля. Заглушка ниже сохраняет корректную сигнатуру
+    # теста для pytest (fixtures продолжают разрешаться).
+    _ = (
+        benchmark,
+        pdf_corpus,
+        scan_docs_count,
+        bench_event_loop,
+        scan_executor,
+        process_runner,
+        event_bus,
+        directory_scanner,
+        file_hasher,
+        tmp_path,
+        itertools,  # будет использоваться в scan_once после активации
+    )
