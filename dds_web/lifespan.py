@@ -6,6 +6,24 @@
 Lifespan выполняет инициализацию компонентов при старте и
 корректное завершение при остановке.
 
+Удаление Service Locator (скорректированный план, Фаза 2):
+
+Модульные глобалы ``dds_web.api._context`` и
+``dds_web.auth._auth_service`` и функции ``set_context()`` /
+``set_auth_service()`` удалены. Все зависимости передаются
+через ``app.state``:
+
+- ``app.state.api_context`` — :class:`~dds_web.api.APIContext`;
+- ``app.state.auth_service`` — :class:`~dds_web.auth.AuthService`.
+
+FastAPI dependency-функции :func:`dds_web.api.get_context` и
+:func:`dds_web.auth.get_auth_service` читают значения из
+``request.app.state`` в момент обработки запроса. Это устраняет
+скрытую глобальную связь между эндпоинтами и делает зависимости
+явными через ``Depends(...)``. Тесты могут подменять контекст
+через ``app.dependency_overrides[get_context]`` и
+``app.dependency_overrides[get_auth_service]``.
+
 Асинхронная модель (Фаза 4, вариант A):
 Lifespan-обработчики позволяют выполнять асинхронную
 инициализацию и завершение в том же event loop, что и
@@ -99,6 +117,9 @@ Graceful shutdown (скорректированный план):
 Принципы:
 - Модуль находится в presentation layer и не содержит бизнес-логики.
 - Компоненты создаются через dependency injection.
+- Зависимости сохраняются в ``app.state`` и читаются FastAPI
+  dependency-функциями в момент обработки запроса. Модульные
+  глобалы (Service Locator) не используются.
 - Все блокирующие операции выполняются через ``run_in_executor``.
 - Graceful shutdown гарантирует корректное завершение всех компонентов.
 - Пулы потоков и процессов разделяются для предотвращения конкуренции.
@@ -162,13 +183,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import APIContext, set_context
+from .api import APIContext
 from .api import router as api_router
 from .auth import (
     AuthService,
     LoginRequiredException,
     UserRole,
-    set_auth_service,
 )
 from .auto_login import (
     auto_login_middleware,
@@ -652,9 +672,12 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
     |    | l. Создать ``HighlightsService`` и                 |
     |    |    ``WordIndexCache`` для предпросмотра.           |
     |    | m. Создать ``APIContext``.                        |
-    |    | n. Установить глобальные контексты.               |
-    |    | o. Сохранить ссылки в ``app.state``.              |
-    |    | p. Публикация ``ApplicationStarted``.             |
+    |    | n. Сохранить ссылки в ``app.state``:              |
+    |    |    ``api_context``, ``auth_service``,             |
+    |    |    ``event_bus``, ``components``,                 |
+    |    |    ``logging_subscriber``, пулы,                  |
+    |    |    ``word_index_cache``, ``auto_login_config``.    |
+    |    | o. Публикация ``ApplicationStarted``.             |
     +----+----------------------------------------------------+
     | 3  | В shutdown:                                       |
     |    | a. Получить компоненты из ``app.state``.          |
@@ -669,7 +692,6 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
     |    | i. Закрыть БД.                                    |
     |    | j. Остановить подписчик логирования и шину.       |
     |    | k. Публикация ``ApplicationStopped``.             |
-    |    | l. Очистить глобальные контексты.                 |
     +----+----------------------------------------------------+
     | 4  | Создать ``FastAPI`` с lifespan.                    |
     +----+----------------------------------------------------+
@@ -697,6 +719,16 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
         каждом запросе сначала выполняется автологин (инжектит
         токен в ``scope["state"]``), затем логирование
         HTTP-запросов, затем route handler.
+
+    Примечание (Фаза 2):
+        Зависимости передаются через ``app.state`` и читаются
+        FastAPI dependency-функциями
+        (:func:`dds_web.api.get_context`,
+        :func:`dds_web.auth.get_auth_service`) в момент обработки
+        запроса. Модульные глобалы (``_context``, ``_auth_service``)
+        не используются: их установка и сброс из ``lifespan``
+        удалены. Тесты могут подменять зависимости через
+        ``app.dependency_overrides``.
 
     Args:
         config_path: Путь к файлу ``config.json``.
@@ -857,11 +889,10 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
             highlights_service=highlights_service,
         )
 
-        # Шаг 14: Установка глобальных контекстов
-        set_context(api_context)
-        set_auth_service(auth_service)
-
-        # Шаг 15: Сохранение ссылок в app.state
+        # Шаг 14: Сохранение ссылок в app.state.
+        # Значения читаются FastAPI dependency-функциями
+        # (get_context, get_auth_service) в момент обработки
+        # запроса. Модульные глобалы не используются.
         app.state.components = components
         app.state.auth_service = auth_service
         app.state.api_context = api_context
@@ -873,7 +904,7 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
         app.state.word_index_cache = word_index_cache
         app.state.auto_login_config = auto_login_config
 
-        # Шаг 16: Публикация события ApplicationStarted
+        # Шаг 15: Публикация события ApplicationStarted
         event_bus.publish(
             ApplicationStarted(
                 correlation_id=str(uuid.uuid4()),
@@ -997,8 +1028,6 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
         except Exception as e:
             print(f"  ✗ Ошибка остановки шины событий: {e}")
 
-        set_context(None)
-        set_auth_service(None)
         print("INFO:     DDS остановлен.")
 
     app = FastAPI(

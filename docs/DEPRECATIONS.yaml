@@ -87,23 +87,23 @@
 
 entries:
 
-# =====================================================================
-# ОБНОВЛЕНИЕ В ФАЗЕ 0:
-#
-# Файл намеренно оставлен с пустым списком `entries: []`.
-# Причина: `type: direct_removal` описывает УЖЕ ВЫПОЛНЕННОЕ удаление.
-# На текущей фазе (0) ни один символ ещё не удалён, поэтому любые
-# записи с `removed_in_phase > 0` дают ERROR в
-# tools/check_deprecations.py.
-#
-# По мере выполнения фаз 2–5 запись добавляется в момент самого
-# удаления символа:
-#
-#   - Фаза 2: set_context, set_auth_service → removed_in_phase: 2
-#   - Фаза 3: text_normalizer.*, search_query_normalizer.* → 3
-#   - Фаза 5: query_builder.build_document_queries, ... → 5
-#
-# Если окажется, что внешний модуль из dds_modules/ использует
-# удаляемый символ — изменить тип записи на `deprecation` и
-# заполнить `module_users`, `deprecated_in_phase`, `remove_in_phase`.
-# =====================================================================
+  # ===================================================================
+  # Фаза 2 — Service Locator → request.app.state.
+  #
+  # Модульные глобалы в web-слое заменены на FastAPI-зависимости
+  # через request.app.state. См. ADR-002.
+  # ===================================================================
+
+  - symbol: dds_web.api.set_context
+    type: direct_removal
+    removed_in_phase: 2
+    module_users: []
+    note: >
+      Удалён. Заменён на request.app.state.api_context.
+
+  - symbol: dds_web.auth.set_auth_service
+    type: direct_removal
+    removed_in_phase: 2
+    module_users: []
+    note: >
+      Удалён. Заменён на request.app.state.auth_service.

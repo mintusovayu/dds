@@ -10,6 +10,16 @@ REST API для веб-интерфейса DDS.
 Все операции делегируются компонентам application layer
 (SearchEngine, ScanOrchestrator, ModuleLifecycle, HighlightsService).
 
+Удаление Service Locator (скорректированный план, Фаза 2):
+Модульные глобалы ``_context`` и функции ``set_context()`` /
+``get_context()`` без аргументов удалены. FastAPI dependency
+:func:`get_context` принимает :class:`~fastapi.Request` и читает
+контейнер из ``request.app.state.api_context``; значение
+записывается в lifespan при старте приложения. Это устраняет
+скрытую глобальную связь между эндпоинтами и делает зависимости
+явными через ``CtxDep``. Тесты могут подменять контекст через
+``app.dependency_overrides[get_context]``.
+
 Асинхронная модель (Фаза 4):
 Все обработчики являются асинхронными (``async def``).
 Блокирующие операции (чтение из БД, чтение из файловой системы,
@@ -150,7 +160,10 @@ HTTP 504. При этом поток в ``ThreadPoolExecutor`` продолжи�
 
 Принципы:
 - Модуль находится в presentation layer и не содержит бизнес-логики.
-- Зависимости передаются через APIContext (Dependency Injection).
+- Зависимости передаются через :class:`APIContext` (Dependency
+  Injection); контейнер читается из ``request.app.state.api_context``
+  через FastAPI dependency :func:`get_context`. Модульные глобалы
+  (Service Locator) не используются.
 - Все запросы валидируются через Pydantic.
 """
 
@@ -610,24 +623,52 @@ class APIContext:
         return self._scan_lock
 
 
-# Глобальный контекст (устанавливается при инициализации приложения)
-_context: APIContext | None = None
+def get_context(request: Request) -> APIContext:
+    """Возвращает контекст API из ``request.app.state``.
 
+    FastAPI dependency для доступа к :class:`APIContext`, созданному
+    в ``lifespan`` при старте приложения. Значение сохраняется
+    в ``app.state.api_context`` (см.
+    ``dds_web/lifespan.py::create_app_with_lifespan``), что
+    обеспечивает инверсию зависимостей: presentation layer
+    (эндпоинты) получает контейнер через DI, а не через модульный
+    глобал. Это устраняет скрытую глобальную связь и позволяет
+    тестам подменять контекст через
+    ``app.dependency_overrides[get_context]``.
 
-def set_context(ctx: APIContext | None) -> None:
-    """Устанавливает контекст API."""
-    global _context
-    _context = ctx
+    Операции:
 
+    +---+-----------------------------------------------------+
+    | № | Описание                                            |
+    +===+=====================================================+
+    | 1 | Чтение ``request.app.state.api_context`` через      |
+    |   | ``getattr(..., None)`` — защита от отсутствия       |
+    |   | атрибута (например, при вызове эндпоинта без        |
+    |   | lifespan в unit-тесте).                             |
+    +---+-----------------------------------------------------+
+    | 2 | Если значение ``None`` — ``HTTPException 503``.     |
+    +---+-----------------------------------------------------+
+    | 3 | Возврат контекста.                                  |
+    +---+-----------------------------------------------------+
 
-def get_context() -> APIContext:
-    """Возвращает контекст API."""
-    if _context is None:
+    Args:
+        request: HTTP-запрос FastAPI. ``request.app.state`` —
+            пространство имён приложения, заполняемое в lifespan.
+
+    Returns:
+        Экземпляр :class:`APIContext`, созданный при старте.
+
+    Raises:
+        HTTPException 503: Если приложение не инициализировано
+            (lifespan не выполнен, либо API вызван до startup).
+    """
+    ctx = getattr(request.app.state, "api_context", None)
+    if ctx is None:
         raise HTTPException(
             status_code=503,
             detail="Приложение не инициализировано.",
         )
-    return _context
+    return ctx
 
 
 CtxDep = Annotated[APIContext, Depends(get_context)]
