@@ -233,6 +233,7 @@ deprecation-запись может ссылаться на ADR, вводящи�
 
 | Номер | Название | Статус | Фаза внедрения |
 |---|---|---|---|
+| ADR-001 | Temporary stderr Lock | accepted | 1 |
 | ADR-002 | Remove Service Locator | accepted | 2 |
 | ADR-003 | Domain Text Normalization | accepted | 3 |
 | ADR-004 | ProcessTaskRunner | accepted | 4 |
@@ -244,7 +245,7 @@ deprecation-запись может ссылаться на ADR, вводящи�
 
 | Номер | Название | Заменён |
 |---|---|---|
-| ADR-001 | Temporary stderr Lock | ADR-004 |
+| — | — | — |
 
 ### Служебные
 
