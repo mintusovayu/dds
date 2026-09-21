@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 
 from ..domain import config
 from ..domain.interfaces import ITextExtractor
-from .text_normalizer import normalize_text
+from ..domain.text_normalization import normalize_text
 
 
 def build_document_queries(

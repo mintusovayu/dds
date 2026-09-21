@@ -71,30 +71,32 @@
 | нормализованными ключами         | к смешению кириллицы и           |
 |                                  | латиницы в PDF и сниппетах FTS5. |
 +----------------------------------+----------------------------------+
-| Параллельные списки              | ``entries`` и ``block_line_pairs`` |
-| ``entries``/``block_line_pairs`` | заполняются синхронно в одном    |
-| в ``build_word_index``           | цикле — это инвариант,           |
-|                                  | обеспечивающий корректную        |
-|                                  | группировку по ``(block_no,      |
-|                                  | line_no)`` при отсутствии поля   |
-|                                  | ``block_no`` в модели            |
-|                                  | ``WordEntry``.                   |
-+----------------------------------+----------------------------------+
 
-Архитектурный компромисс (infrastructure → application):
+Использование ``normalize_text`` из domain-слоя:
 
-Модуль импортирует функцию :func:`normalize_text` из
-``dds_core.application.text_normalizer``. Формально это нарушает
-направление зависимостей (infrastructure зависит от application),
-но компромисс осознан:
+Модуль импортирует :func:`normalize_text` из
+``dds_core.domain.text_normalization``. Правило нормализации —
+**доменное**: оно определяет семантику поиска в DDS и должно быть
+единым контрактом для infrastructure (индексация, построение
+``WordIndex``), application (сниппеты) и presentation (отображение).
 
-- ``normalize_text`` — чистая функция без побочных эффектов и
-  внешних зависимостей.
-- Её назначение — быть **единым контрактом нормализации** между
-  инфраструктурой (индексация, построение ``WordIndex``),
-  application (поиск, сниппеты) и presentation (подсветка).
-- Дублирование функции в домене или инфраструктуре привело бы
-  к риску рассинхронизации правил нормализации.
+Ранее нормализация находилась в
+``dds_core/application/text_normalizer.py``, и infrastructure была
+вынуждена импортировать функцию из application-слоя — это нарушало
+направление зависимостей. Перенос модуля в domain (Фаза 3,
+ADR-003) устраняет компромисс: infrastructure теперь зависит от
+domain, что соответствует слоистой архитектуре.
+
+Отсутствие поля ``block_no`` в предыдущих версиях:
+
+До Фазы 3 модель ``WordEntry`` не содержала поля ``block_no``,
+и группировка по ``by_line`` выполнялась через параллельный
+список ``block_line_pairs`` с инвариантом «индекс i в обоих
+списках соответствует одному слову». Инвариант был хрупким:
+любая фильтрация в цикле сломала бы соответствие. В Фазе 3
+поле ``block_no`` добавлено в :class:`WordEntry`, инвариант
+устранён — ``build_word_index`` строит ``by_line`` напрямую через
+``entry.block_no``.
 """
 
 from __future__ import annotations
@@ -108,9 +110,9 @@ try:
 except ImportError:
     import fitz
 
-from ..application.text_normalizer import normalize_text
 from ..domain import config as core_config
 from ..domain.models import WordEntry, WordIndex
+from ..domain.text_normalization import normalize_text
 
 # ----------------------------------------------------------------------
 # Модульная блокировка для перехвата stderr
@@ -430,32 +432,8 @@ class PyMuPDFTextDocument:
         Извлекает слова страницы через ``page.get_text("words")``
         и формирует :class:`WordIndex` для поиска совпадений
         и подсветки. Каждое слово представлено :class:`WordEntry`
-        с координатами bbox, оригинальной и нормализованной формами.
-
-        Инвариант синхронности списков:
-        Списки ``entries`` и ``block_line_pairs`` заполняются
-        параллельно в одном цикле: на каждой итерации, добавляющей
-        запись в ``entries``, добавляется соответствующая пара
-        ``(block_no, line_no)`` в ``block_line_pairs``. Инвариант
-        ``entries[i] ↔ block_line_pairs[i]`` гарантирует корректную
-        группировку по ключу ``(block_no, line_no)`` при построении
-        ``by_line``.
-
-        Причина такого решения:
-        Модель :class:`WordEntry` (см. ``dds_core/domain/models.py``)
-        не содержит поля ``block_no`` — оно было исключено при
-        упрощении алгоритма поиска фраз (фразы ищутся только внутри
-        одной строки). Однако ``by_line`` требует ключ
-        ``(block_no, line_no)``, потому что PyMuPDF нумерует строки
-        отдельно в каждом блоке, начиная с 0. Параллельный список
-        решает эту задачу без расширения модели.
-
-        **Важно для будущих правок:** любое изменение цикла, которое
-        добавляет или пропускает элемент в одном из списков без
-        синхронного изменения другого, нарушит инвариант. Если
-        потребуется фильтрация после ``entries.append()`` — либо
-        фильтровать до добавления, либо переносить ``block_no``
-        в модель ``WordEntry``.
+        с координатами bbox, оригинальной и нормализованной формами,
+        номерами блока, строки и позиции в строке.
 
         Операции:
 
@@ -472,16 +450,14 @@ class PyMuPDFTextDocument:
         | 4  | Для каждого слова:                                 |
         |    | a. ``.strip()``, пропуск пустых токенов.           |
         |    | b. Нормализация через ``normalize_text``.          |
-        |    | c. Формирование :class:`WordEntry`.                |
-        |    | d. **Синхронное** добавление ``(block_no,          |
-        |    |    line_no)`` в ``block_line_pairs``.              |
+        |    | c. Формирование :class:`WordEntry` со всеми        |
+        |    |    полями, включая ``block_no``.                    |
         +----+----------------------------------------------------+
         | 5  | Заполнение ``by_normalized`` — группировка по      |
         |    | нормализованной форме.                             |
         +----+----------------------------------------------------+
         | 6  | Заполнение ``by_line`` — группировка по            |
-        |    | ``(block_no, line_no)`` через ``zip`` двух         |
-        |    | синхронных списков.                                 |
+        |    | ``(entry.block_no, entry.line_no)``.               |
         +----+----------------------------------------------------+
         | 7  | Сортировка списков внутри словарей.                |
         +----+----------------------------------------------------+
@@ -524,13 +500,7 @@ class PyMuPDFTextDocument:
 
         # Формирование списка WordEntry.
         # Кортеж PyMuPDF: (x0, y0, x1, y1, text, block_no, line_no, word_no).
-        #
-        # ИНВАРИАНТ: entries и block_line_pairs заполняются синхронно.
-        # Индекс i в обоих списках соответствует одному и тому же
-        # слову страницы. Это позволяет построить by_line с ключом
-        # (block_no, line_no), не добавляя block_no в модель WordEntry.
         entries: list[WordEntry] = []
-        block_line_pairs: list[tuple[int, int]] = []
         for item in raw_words:
             x0, y0, x1, y1, text, block_no, line_no, word_no = item
             text_stripped = text.strip()
@@ -544,11 +514,11 @@ class PyMuPDFTextDocument:
                     y1=float(y1),
                     original=text_stripped,
                     normalized=normalize_text(text_stripped),
+                    block_no=int(block_no),
                     line_no=int(line_no),
                     word_no=int(word_no),
                 )
             )
-            block_line_pairs.append((int(block_no), int(line_no)))
 
         # by_normalized: группировка по нормализованной форме.
         by_normalized: dict[str, list[WordEntry]] = {}
@@ -558,11 +528,12 @@ class PyMuPDFTextDocument:
             lst.sort(key=lambda e: (e.line_no, e.word_no))
 
         # by_line: группировка по (block_no, line_no).
-        # Использует параллельный список block_line_pairs —
-        # индекс i в entries и block_line_pairs совпадают.
+        # Ключ формируется напрямую из полей WordEntry: block_no
+        # добавлен в модель в Фазе 3 (ADR-003), параллельный список
+        # block_line_pairs более не используется.
         by_line: dict[tuple[int, int], list[WordEntry]] = {}
-        for entry, (block_no, line_no) in zip(entries, block_line_pairs, strict=False):
-            key = (block_no, line_no)
+        for entry in entries:
+            key = (entry.block_no, entry.line_no)
             by_line.setdefault(key, []).append(entry)
         for lst in by_line.values():
             lst.sort(key=lambda e: e.word_no)

@@ -57,53 +57,88 @@
 #
 # См. также:
 #   - docs/architecture-decisions/README.md (правила ADR)
-#   - ADR-002 (Remove Service Locator)
-#   - ADR-003 (Domain Text Normalization)
-#   - ADR-005 (DocumentIndexPlan)
+#   - ADR-002 (Remove Service Locator)  — записи Фазы 2
+#   - ADR-003 (Domain Text Normalization) — записи Фазы 3
+#   - ADR-005 (DocumentIndexPlan, запланирован) — записи Фазы 5
 #
 # =====================================================================
-# ОБНОВЛЕНИЕ В ФАЗЕ 0:
+# ПРАВИЛА ВЕДЕНИЯ ФАЙЛА:
 #
-# Все записи изначально заполнены как ``direct_removal`` с пустым
-# ``module_users``. Это исходное предположение: внешние модули
-# работают через ``IModule``/``ISecondaryProcessor`` и не
-# обращаются к внутренним helper'ам ядра (``TextIndexer``,
-# ``SQLiteAdapter``, ``set_context``) напрямую.
+# 1. Запись добавляется в момент фактического удаления символа
+#    (при выполнении соответствующей фазы), а не заранее.
+#    Причина: ``direct_removal`` описывает УЖЕ ВЫПОЛНЕННОЕ удаление.
+#    Запись с ``removed_in_phase > current_phase`` даёт ERROR в
+#    tools/check_deprecations.py («удаление запланировано на будущую
+#    фазу, но помечено как сделанное»).
 #
-# Если запуск ``python tools/check_module_compatibility.py``
-# обнаружит реальные использования какого-либо символа в
-# ``dds_modules/``, соответствующая запись ДОЛЖНА быть изменена:
+# 2. Записи предыдущих фаз удаляются из файла через 2 фазы после
+#    их появления (grace = _DIRECT_REMOVAL_GRACE_PHASES в
+#    check_deprecations.py). Раньше — по желанию автора фазы.
+#    По истечении grace-периода на запись выдаётся WARNING
+#    «устаревшая запись direct_removal — можно удалить из YAML».
 #
-#   - ``type``: ``direct_removal`` → ``deprecation``;
-#   - добавить ``deprecated_in_phase`` (номер фазы, в которой
-#     символ помечен устаревшим);
-#   - добавить ``remove_in_phase`` = 10 (обёртка сохраняется до
-#     конца рефакторинга);
-#   - заполнить ``module_users`` именами модулей-потребителей;
-#   - ``removed_in_phase`` удалить (взаимоисключающее поле).
+# 3. Если внешний модуль из ``dds_modules/`` использует удаляемый
+#    символ, тип записи меняется на ``deprecation`` и заполняются
+#    ``module_users``, ``deprecated_in_phase``, ``remove_in_phase``.
+#    Ответственность за перепроверку — на авторе фазы: перед
+#    удалением следует запустить check_module_compatibility.py.
 #
-# Ответственность за обновление — на авторе Фазы 0.
 # =====================================================================
 
 entries:
 
   # ===================================================================
-  # Фаза 2 — Service Locator → request.app.state.
+  # Фаза 3 — Domain cleanup (ADR-003).
   #
-  # Модульные глобалы в web-слое заменены на FastAPI-зависимости
-  # через request.app.state. См. ADR-002.
+  # Правило нормализации текста перенесено в domain
+  # (``dds_core/domain/text_normalization.py``). Разбор поискового
+  # запроса и сборка FTS5 MATCH-выражения разделены на application
+  # (токенизатор) и infrastructure/fts5 (сборщик MATCH).
+  #
+  # Все записи — ``direct_removal``: внешние модули из
+  # ``dds_modules/`` не используют внутренние утилиты ядра
+  # (правило нормализации и сборщик запроса — часть ядра DDS).
   # ===================================================================
 
-  - symbol: dds_web.api.set_context
+  - symbol: dds_core.application.text_normalizer.normalize_text
     type: direct_removal
-    removed_in_phase: 2
+    removed_in_phase: 3
     module_users: []
     note: >
-      Удалён. Заменён на request.app.state.api_context.
+      Перенесено в dds_core.domain.text_normalization.normalize_text.
+      Замена — прямой импорт из domain-модуля.
 
-  - symbol: dds_web.auth.set_auth_service
+  - symbol: dds_core.application.text_normalizer.denormalize_text
     type: direct_removal
-    removed_in_phase: 2
+    removed_in_phase: 3
     module_users: []
     note: >
-      Удалён. Заменён на request.app.state.auth_service.
+      Перенесено в dds_core.domain.text_normalization.denormalize_text.
+      Замена — прямой импорт из domain-модуля.
+
+  - symbol: dds_core.application.text_normalizer.CYRILLIC_TO_LATIN_MAP
+    type: direct_removal
+    removed_in_phase: 3
+    module_users: []
+    note: >
+      Перенесено в dds_core.domain.text_normalization.CYRILLIC_TO_LATIN_MAP.
+
+  - symbol: dds_core.application.text_normalizer.LATIN_TO_CYRILLIC_MAP
+    type: direct_removal
+    removed_in_phase: 3
+    module_users: []
+    note: >
+      Перенесено в dds_core.domain.text_normalization.LATIN_TO_CYRILLIC_MAP.
+
+  - symbol: dds_core.application.search_query_normalizer.normalize_search_query
+    type: direct_removal
+    removed_in_phase: 3
+    module_users: []
+    note: >
+      Разделено на два модуля:
+      - dds_core.application.query_tokenizer.tokenize_search_query —
+        структурный разбор запроса в discriminated union токенов;
+      - dds_core.infrastructure.fts5.match_builder.normalize_search_query —
+        сборка FTS5 MATCH-выражения из токенов.
+      Замена для потребителей — прямой импорт из
+      dds_core.infrastructure.fts5.match_builder.

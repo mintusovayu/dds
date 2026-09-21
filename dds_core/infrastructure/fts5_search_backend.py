@@ -124,11 +124,15 @@ SQLite.
 
 Для нечувствительного к раскладке поиска используется колонка
 ``normalized_text`` в ``text_index_fts``. Пользовательский запрос
-нормализуется с помощью
-:func:`~dds_core.application.search_query_normalizer.normalize_search_query`.
+преобразуется в FTS5 MATCH-выражение функцией
+:func:`~dds_core.infrastructure.fts5.match_builder.normalize_search_query`,
+которая объединяет структурный разбор запроса
+(:func:`~dds_core.application.query_tokenizer.tokenize_search_query`)
+и FTS5-специфичную сборку
+(:func:`~dds_core.infrastructure.fts5.match_builder.build_match_expression`).
 Сниппеты формируются из ``normalized_text`` (индекс 3) и
 денормализуются функцией
-:func:`~dds_core.application.text_normalizer.denormalize_text`.
+:func:`~dds_core.domain.text_normalization.denormalize_text`.
 
 Принципы:
 - Модуль реализует интерфейс доменного слоя (инверсия зависимостей).
@@ -147,11 +151,11 @@ import re
 import sqlite3
 
 from ..application.metadata_filter_query_builder import MetadataFilterQueryBuilder
-from ..application.search_query_normalizer import normalize_search_query
-from ..application.text_normalizer import denormalize_text
 from ..domain import config
 from ..domain.interfaces import IDatabase
 from ..domain.models import PageHit, SearchFilters, SearchResult
+from ..domain.text_normalization import denormalize_text
+from .fts5.match_builder import normalize_search_query
 
 # ----------------------------------------------------------------------
 # Валидация SQL-идентификаторов
@@ -213,7 +217,7 @@ class FTS5SearchBackend:
     Нормализация раскладки:
     Для непустых запросов используется колонка ``normalized_text``.
     Выражение для MATCH формируется функцией
-    :func:`~dds_core.application.search_query_normalizer.normalize_search_query`.
+    :func:`~dds_core.infrastructure.fts5.match_builder.normalize_search_query`.
 
     Двухзапросный подход:
     ``search()`` выполняет два SQL-запроса:

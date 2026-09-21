@@ -47,7 +47,7 @@ read-only параметры (со значениями по умолчанию 
   ``__init__`` и не изменяется в дальнейшем; методы не хранят
   изменяемого состояния между вызовами.
 - Инверсия зависимостей: использует :func:`normalize_text` из
-  application layer, модели из domain layer, диагностику из
+  domain layer, модели из domain layer, диагностику из
   :mod:`dds_core.application.coordinate_diagnostics`, значения
   по умолчанию — из :mod:`dds_core.domain.config`.
 
@@ -60,8 +60,8 @@ from __future__ import annotations
 
 from ..domain import config as core_config
 from ..domain.models import PageHighlight, WordEntry, WordIndex
+from ..domain.text_normalization import normalize_text
 from .coordinate_diagnostics import diagnose_word_index, transform_bbox
-from .text_normalizer import normalize_text
 
 
 class HighlightsService:
