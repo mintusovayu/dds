@@ -95,6 +95,17 @@ namespace_packages = true
 module = "fitz.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# PyMuPDF: fallback-импорт `fitz` для старых версий (<1.24.4) неизбежно
+# создаёт второе определение имени `fitz` в одном модуле. Это осознанный
+# паттерн совместимости; `no-redef` для этого модуля отключён. Причина —
+# расхождение окружений mypy в venv (pymupdf установлен) и pre-commit
+# (pymupdf отсутствует), из-за чего одна и та же директива
+# `# type: ignore[no-redef]` в одном контексте нужна, а в другом
+# считается неиспользуемой (`warn_unused_ignores = true`).
+module = "dds_core.infrastructure.pymupdf_text_extractor"
+disable_error_code = ["no-redef"]
+
 
 # ---------------------------------------------------------------------
 # Pylance / Pyright (VS Code)

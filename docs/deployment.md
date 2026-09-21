@@ -124,7 +124,7 @@ cp config.json.example config.json
 
 | Параметр | Описание | Значение по умолчанию |
 |---|---|---|
-| `SCAN_COMMIT_INTERVAL` | Количество документов в одной транзакции при батчевой записи (с `SAVEPOINT`) | `200` |
+| `SCAN_COMMIT_INTERVAL` | Количество документов в одной транзакции при батчевой записи (с `SAVEPOINT`) | `500` |
 | `DEFAULT_LOG_LEVEL` | Уровень логирования событий | `"WARNING"` |
 | `DEFAULT_LOG_FILE_PATH` | Путь к файлу лога | `"dds.log"` |
 | `LOG_MAX_FILE_SIZE_MB` | Максимальный размер лог-файла до ротации | `10` |
@@ -450,8 +450,9 @@ curl -N http://localhost:8000/api/scan/progress
 | `scan.cache_load` | 30 | Загрузка кэша таблицы `documents` в память |
 | `scan.cancel_grace` | 5 | Ожидание завершения конвейера при отмене |
 | `index.refresh` | 600 | Полный пересчёт состояния индексации |
-| `index.refresh_single_hash` | 30 | Хеширование одного файла при пересчёте |
 | `search.query` | 30 | FTS5-запрос поиска |
+| `render.page` | 30 | Генерация PNG-рендера страницы (`ITextDocument.render_page`) в `scan_executor` |
+| `render.highlights` | 30 | Построение `WordIndex` и поиск совпадений в `scan_executor` |
 | `document.page_load` | 30 | Загрузка текста страницы документа |
 | `document.delete` | 30 | Удаление документа из индекса |
 | `auth.login` | 10 | Хеширование пароля (PBKDF2, 100 000 итераций) |
