@@ -31,9 +31,24 @@ Lifespan-обработчики позволяют выполнять асинх
 ресурсами, включая ожидание завершения активной задачи
 сканирования перед закрытием БД.
 
-Разделение пулов потоков и процессов (скорректированный план):
-При инициализации создаются два выделенных пула потоков
-и один пул процессов.
+Разделение пулов и subprocess-задач (Фаза 4):
+При инициализации создаются:
+- ``api_executor`` — ``ThreadPoolExecutor`` для веб-запросов
+  (чтение из БД, файловой системы);
+- ``scan_executor`` — ``ThreadPoolExecutor`` для операций
+  сканирования и рендера PDF;
+- ``process_runner`` — ``ProcessTaskRunner`` (process-per-task
+  на контексте forkserver) для извлечения текста PDF в
+  изолированных subprocess.
+
+``ProcessTaskRunner`` заменяет прежний ``ProcessPoolExecutor`` для
+``extract_executor``. Преимущества: изоляция состояния (forkserver),
+устойчивость к сегфолтам PyMuPDF (процесс-per-task), автоматическое
+освобождение ресурсов. Worker-функция ``extract_document_queries``
+передаётся в ``create_components`` как ``Callable`` — это единственная
+точка импорта ``dds_core.subprocess_tasks`` во всём проекте
+(контракт ``subprocess-tasks-isolation``). Метод ``close()`` runner'а
+вызывается в shutdown до закрытия БД.
 
 Фильтрация по метаданным:
 При старте приложения создаются репозитории справочников
@@ -107,12 +122,18 @@ Middleware читает ``auto_login_config``, ``auth_service`` и
 заменяются на ``_``. При обнаружении коллизии (два username дают
 одно env-имя) выводится WARNING в stdout.
 
-Graceful shutdown (скорректированный план):
-При остановке пулы потоков и процессов завершаются через
-``shutdown(wait=True, cancel_futures=True)`` — гарантирует, что
-активные задачи завершатся до закрытия БД, а ещё не начатые
-будут отменены. Это предотвращает обращение к закрытой БД из
-фоновых потоков.
+Graceful shutdown (Фаза 4):
+При остановке:
+- ``ProcessTaskRunner.close(shutdown_timeout)`` завершает активные
+  subprocess-задачи (SIGTERM → grace → SIGKILL); метод
+  асинхронный, вызывается в event loop lifespan;
+- ``ThreadPoolExecutor.shutdown(wait=True, cancel_futures=True)``
+  гарантирует, что активные задачи в ``api_executor`` и
+  ``scan_executor`` завершатся до закрытия БД, а ещё не начатые
+  будут отменены.
+
+Порядок операций предотвращает обращение к закрытой БД из
+фоновых потоков и subprocess-задач.
 
 Принципы:
 - Модуль находится в presentation layer и не содержит бизнес-логики.
@@ -122,7 +143,8 @@ Graceful shutdown (скорректированный план):
   глобалы (Service Locator) не используются.
 - Все блокирующие операции выполняются через ``run_in_executor``.
 - Graceful shutdown гарантирует корректное завершение всех компонентов.
-- Пулы потоков и процессов разделяются для предотвращения конкуренции.
+- Пулы потоков и subprocess-задачи разделяются для предотвращения
+  конкуренции.
 """
 
 from __future__ import annotations
@@ -130,15 +152,15 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import multiprocessing
 import os
 import re
-import sys
 import time
 import uuid
-from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor
+from collections.abc import Callable
+from concurrent.futures import Executor, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
+from typing import Any
 from urllib.parse import quote
 
 from dds_core.application.dependency_checker import DependencyChecker
@@ -172,6 +194,7 @@ from dds_core.infrastructure.file_hasher import FileHasher
 from dds_core.infrastructure.file_scanner import DirectoryScanner
 from dds_core.infrastructure.fts5_search_backend import FTS5SearchBackend
 from dds_core.infrastructure.logging_subscriber import LoggingSubscriber
+from dds_core.infrastructure.process_task_runner import ProcessTaskRunner
 from dds_core.infrastructure.pymupdf_text_extractor import (
     PyMuPDFTextExtractor,
 )
@@ -179,6 +202,7 @@ from dds_core.infrastructure.sqlite_adapter import SQLiteAdapter
 from dds_core.infrastructure.sqlite_reference_repository import (
     SqliteReferenceRepository,
 )
+from dds_core.subprocess_tasks.pdf_workers import extract_document_queries
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -257,12 +281,14 @@ def create_components(
     config: dict,
     event_bus: IEventBus,
     scan_executor: Executor | None = None,
-    extract_executor: Executor | None = None,
+    process_runner: ProcessTaskRunner | None = None,
+    pdf_worker: Callable[..., Any] | None = None,
 ) -> dict:
     """Создаёт все компоненты DDS через dependency injection.
 
-    Включая новые компоненты фильтрации по метаданным и
-    инициализацию справочников из JSON.
+    Включая компоненты фильтрации по метаданным, инициализацию
+    справочников из JSON и передачу приоритетного исполнителя
+    subprocess-задач (``process_runner``) в ``ScanOrchestrator``.
 
     Операции:
 
@@ -294,8 +320,8 @@ def create_components(
     | 8 | Передача ``event_bus`` во все компоненты, которые   |
     |   | публикуют события.                                 |
     +---+-----------------------------------------------------+
-    | 9 | Передача ``scan_executor`` и ``extract_executor``    |
-    |   | в ``ScanOrchestrator``.                             |
+    | 9 | Передача ``scan_executor``, ``process_runner`` и     |
+    |   | ``pdf_worker`` в ``ScanOrchestrator``.              |
     +---+-----------------------------------------------------+
     | 10| Возврат словаря компонентов.                        |
     +---+-----------------------------------------------------+
@@ -305,8 +331,14 @@ def create_components(
         event_bus: Шина событий для публикации.
         scan_executor: Пул потоков для операций сканирования.
             Если ``None``, используется дефолтный пул.
-        extract_executor: Пул процессов для извлечения текста.
-            Если ``None``, извлечение выполняется в ``scan_executor``.
+        process_runner: Приоритетный исполнитель subprocess-задач
+            (``ProcessTaskRunner``). Передаётся в ``ScanOrchestrator``;
+            если ``None`` — конвейер использует потоковый fallback
+            через ``indexer.prepare_document_queries``.
+        pdf_worker: Picklable-функция извлечения текста одного PDF.
+            Передаётся как ``Callable`` без импорта
+            ``subprocess_tasks`` в application. Обязателен при
+            заданном ``process_runner``.
 
     Returns:
         Словарь созданных компонентов.
@@ -408,8 +440,9 @@ def create_components(
         event_bus=event_bus,
         scan_executor=scan_executor,
         document_cache=document_cache,
-        extract_executor=extract_executor,
         document_metadata_service=document_metadata_service,
+        process_runner=process_runner,
+        pdf_worker=pdf_worker,
     )
 
     return {
@@ -660,8 +693,9 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
     |    | b. Настроить файловое логирование.                |
     |    | c. Создать и запустить шину событий.             |
     |    | d. Создать и запустить подписчика логирования.    |
-    |    | e. Создать пулы потоков и процессов.              |
-    |    | f. Создать компоненты через ``create_components``.|
+    |    | e. Создать пулы потоков и ``ProcessTaskRunner``.  |
+    |    | f. Создать компоненты через ``create_components``|
+    |    |    (передача ``process_runner`` и ``pdf_worker``).|
     |    | g. Инициализировать модули.                        |
     |    | h. Создать сервис аутентификации.                 |
     |    | i. Парсинг и валидация конфигурации                |
@@ -676,6 +710,7 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
     |    |    ``api_context``, ``auth_service``,             |
     |    |    ``event_bus``, ``components``,                 |
     |    |    ``logging_subscriber``, пулы,                  |
+    |    |    ``process_runner``,                            |
     |    |    ``word_index_cache``, ``auto_login_config``.    |
     |    | o. Публикация ``ApplicationStarted``.             |
     +----+----------------------------------------------------+
@@ -687,11 +722,13 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
     |    | e. Дождаться завершения задачи сканирования.      |
     |    | f. Остановить модули.                             |
     |    | g. Очистить ``word_index_cache``.                 |
-    |    | h. Завершить пулы потоков и процессов через       |
-    |    |    ``shutdown(wait=True, cancel_futures=True)``.  |
-    |    | i. Закрыть БД.                                    |
-    |    | j. Остановить подписчик логирования и шину.       |
-    |    | k. Публикация ``ApplicationStopped``.             |
+    |    | h. ``await process_runner.close(shutdown_timeout)``|
+    |    |    → завершение subprocess-задач.                 |
+    |    | i. Завершить ``api_executor`` и ``scan_executor`` |
+    |    |    через ``shutdown(wait=True, cancel_futures=True)``.|
+    |    | j. Закрыть БД.                                    |
+    |    | k. Остановить подписчик логирования и шину.       |
+    |    | l. Публикация ``ApplicationStopped``.             |
     +----+----------------------------------------------------+
     | 4  | Создать ``FastAPI`` с lifespan.                    |
     +----+----------------------------------------------------+
@@ -729,6 +766,14 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
         не используются: их установка и сброс из ``lifespan``
         удалены. Тесты могут подменять зависимости через
         ``app.dependency_overrides``.
+
+    Примечание (Фаза 4):
+        ``ProcessTaskRunner`` создаётся в startup и закрывается
+        в shutdown через ``await process_runner.close(...)``.
+        Worker-функция ``extract_document_queries`` импортируется
+        из ``dds_core.subprocess_tasks.pdf_workers`` — это
+        единственная точка импорта ``subprocess_tasks`` во всём
+        проекте (контракт ``subprocess-tasks-isolation``).
 
     Args:
         config_path: Путь к файлу ``config.json``.
@@ -777,7 +822,20 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
         await logging_subscriber.start(event_bus)
         print("INFO:     Подписчик логирования запущен")
 
-        # Шаг 5: Создание пулов потоков и процессов
+        # Шаг 5: Создание пулов потоков и ProcessTaskRunner.
+        #
+        # api_executor и scan_executor — ThreadPoolExecutor:
+        #   api_executor — веб-запросы (чтение БД, файловой системы).
+        #   scan_executor — сканирование, рендер PDF, построение
+        #                   индексов слов.
+        #
+        # ProcessTaskRunner — process-per-task исполнитель для
+        # извлечения текста PDF в изолированных subprocess
+        # (forkserver на Linux, spawn на macOS/Windows). Заменяет
+        # прежний ProcessPoolExecutor для ``extract_executor``.
+        # Метод ``run()`` асинхронный; старт forkserver выполняется
+        # в отдельном потоке через ``asyncio.to_thread`` внутри
+        # ``ProcessTaskRunner.run`` (обход ограничения Python 3.14).
         api_executor = ThreadPoolExecutor(
             max_workers=core_config.API_EXECUTOR_MAX_WORKERS,
             thread_name_prefix="dds-api",
@@ -786,23 +844,22 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
             max_workers=core_config.SCAN_EXECUTOR_MAX_WORKERS,
             thread_name_prefix="dds-scan",
         )
-
-        if sys.platform == "linux":
-            mp_context = multiprocessing.get_context("fork")
-        else:
-            mp_context = multiprocessing.get_context("spawn")
-        extract_executor = ProcessPoolExecutor(
-            max_workers=core_config.SCAN_EXTRACT_WORKERS,
-            mp_context=mp_context,
-        )
-        print("INFO:     Пулы потоков и процессов созданы")
+        process_runner = ProcessTaskRunner()
+        print("INFO:     Пулы потоков и ProcessTaskRunner созданы")
 
         # Шаг 6: Создание компонентов с передачей пулов
+        # и приоритетного исполнителя subprocess-задач.
+        #
+        # extract_document_queries импортируется здесь — единственная
+        # точка импорта subprocess_tasks во всём проекте (контракт
+        # subprocess-tasks-isolation). Передаётся как pdf_worker;
+        # ScanPipeline вызывает его через process_runner.run(...).
         components = create_components(
             config,
             event_bus,
             scan_executor=scan_executor,
-            extract_executor=extract_executor,
+            process_runner=process_runner,
+            pdf_worker=extract_document_queries,
         )
         print("INFO:     Компоненты инициализированы.")
 
@@ -893,6 +950,11 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
         # Значения читаются FastAPI dependency-функциями
         # (get_context, get_auth_service) в момент обработки
         # запроса. Модульные глобалы не используются.
+        #
+        # ``process_runner`` сохраняется для вызова ``close()``
+        # в shutdown; отдельного ``extract_executor`` нет —
+        # ``ProcessTaskRunner`` полностью заменяет прежний пул
+        # процессов для извлечения текста.
         app.state.components = components
         app.state.auth_service = auth_service
         app.state.api_context = api_context
@@ -900,7 +962,7 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
         app.state.logging_subscriber = logging_subscriber
         app.state.api_executor = api_executor
         app.state.scan_executor = scan_executor
-        app.state.extract_executor = extract_executor
+        app.state.process_runner = process_runner
         app.state.word_index_cache = word_index_cache
         app.state.auto_login_config = auto_login_config
 
@@ -927,7 +989,7 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
         logging_subscriber_shutdown = app.state.logging_subscriber
         api_executor_shutdown = app.state.api_executor
         scan_executor_shutdown = app.state.scan_executor
-        extract_executor_shutdown = app.state.extract_executor
+        process_runner_shutdown = app.state.process_runner
         word_index_cache_shutdown = app.state.word_index_cache
 
         event_bus_shutdown.publish(
@@ -990,15 +1052,27 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
             except Exception as e:
                 print(f"  ✗ Ошибка очистки кэша индексов слов: {e}")
 
-        # Завершение пулов: wait=True — дождаться завершения активных
-        # задач; cancel_futures=True — отменить ещё не начатые.
-        # Это гарантирует, что потоки/процессы не обратятся к БД
-        # после её закрытия.
+        # Завершение subprocess-задач и пулов потоков.
+        #
+        # Порядок:
+        # 1. ``await process_runner.close(shutdown_timeout)`` —
+        #    активные subprocess-задачи получают SIGTERM, через
+        #    grace — SIGKILL. Метод асинхронный: вызывается в
+        #    event loop lifespan.
+        # 2. ``ThreadPoolExecutor.shutdown(wait=True, cancel_futures=True)``:
+        #    wait=True — дождаться активных задач; cancel_futures=True —
+        #    отменить ещё не начатые.
+        #
+        # Оба шага выполняются до закрытия БД: это гарантирует,
+        # что фоновые потоки и subprocess-задачи не обратятся к
+        # закрытой БД.
         try:
+            await process_runner_shutdown.close(
+                shutdown_timeout=core_config.PROCESS_RUNNER_SHUTDOWN_TIMEOUT,
+            )
             api_executor_shutdown.shutdown(wait=True, cancel_futures=True)
             scan_executor_shutdown.shutdown(wait=True, cancel_futures=True)
-            extract_executor_shutdown.shutdown(wait=True, cancel_futures=True)
-            print("INFO:     Пулы потоков и процессов завершены")
+            print("INFO:     ProcessTaskRunner и пулы потоков завершены")
         except Exception as e:
             print(f"  ✗ Ошибка завершения пулов: {e}")
 

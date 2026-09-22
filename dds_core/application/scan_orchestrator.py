@@ -1,9 +1,11 @@
 """
 Оркестратор сканирования DDS.
+
 Этот модуль координирует процесс сканирования каталога рабочей
 документации (РД) и управляет поэтапным сканированием.
 
 Фазы сканирования:
+
 Фаза 1 (primary): индексирование текстового слоя.
 - Сканирование каталога РД.
 - Ленивое хеширование файлов для контроля дубликатов.
@@ -40,6 +42,24 @@
 через выделенный пул потоков ``scan_executor``, переданный через
 конструктор. Это предотвращает конкуренцию с веб-запросами за
 потоки дефолтного пула.
+
+Извлечение текста через subprocess (Фаза 4):
+Оркестратор передаёт в ``ScanPipeline`` приоритетный исполнитель
+subprocess-задач (``process_runner``, реализация
+``IProcessTaskRunner``) и picklable worker-функцию (``pdf_worker``).
+Извлечение текста одного PDF выполняется в изолированном процессе
+(``forkserver`` на Linux), что даёт устойчивость к сегфолтам PyMuPDF
+и изоляцию состояния между задачами. Конкретная реализация
+передаётся из composition root (``dds_web/lifespan.py``); сам
+оркестратор не импортирует ``infrastructure.process_task_runner``
+(сохраняет контракт ``application-isolation``) и не импортирует
+``subprocess_tasks`` (сохраняет контракт
+``subprocess-tasks-isolation``). Worker-функция передаётся как
+``Callable`` — без знания о её модуле.
+
+Если ``process_runner`` или ``pdf_worker`` не заданы (тесты,
+edge-сценарии), ``ScanPipeline`` использует потоковый fallback
+через ``indexer.prepare_document_queries`` в ``scan_executor``.
 
 Ленивое хеширование (Фаза 2 оптимизации):
 При повторном сканировании каталога РД метаданные файла
@@ -103,8 +123,10 @@ import asyncio
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from concurrent.futures import Executor
 from datetime import UTC, datetime
+from typing import Any
 
 from ..domain import config
 from ..domain.events import (
@@ -122,6 +144,7 @@ from ..domain.interfaces import (
     IEventBus,
     IHasher,
     IModuleLifecycle,
+    IProcessTaskRunner,
     IScanner,
     ITextExtractor,
     ITextIndexer,
@@ -161,6 +184,17 @@ class ScanOrchestrator:
     через ``await pipeline.run_async()``. Блокирующие операции
     (создание и завершение записи в ``scan_state``) выполняются
     через выделенный пул потоков ``scan_executor``.
+
+    Извлечение текста через subprocess (Фаза 4):
+    Оркестратор принимает ``process_runner`` (реализация
+    ``IProcessTaskRunner``) и ``pdf_worker`` (picklable-функция
+    извлечения текста одного PDF). Оба передаются в ``ScanPipeline``
+    при создании конвейера. Если хотя бы один из них ``None`` —
+    конвейер использует потоковый fallback через
+    ``indexer.prepare_document_queries`` в ``scan_executor``.
+    Конкретные реализации передаются через DI из composition root
+    (``dds_web/lifespan.py``); сам оркестратор не импортирует
+    infrastructure и subprocess_tasks.
 
     Кэширование состояния индексации (скорректированный план):
     Тяжёлый метод ``_calculate_index_status`` кэшируется.
@@ -222,8 +256,9 @@ class ScanOrchestrator:
             event_bus=event_bus,
             scan_executor=scan_executor,
             document_cache=document_cache,
-            extract_executor=extract_executor,
             document_metadata_service=document_metadata_service,
+            process_runner=process_runner,
+            pdf_worker=extract_document_queries,
         )
 
         # Первичное сканирование (асинхронное, в основном event loop):
@@ -277,8 +312,12 @@ class ScanOrchestrator:
     +-----------------------------+-------------------------------------------+
     | ``_document_cache``         | Кэш метаданных документов или ``None``.   |
     +-----------------------------+-------------------------------------------+
-    | ``_extract_executor``       | Пул процессов для извлечения текста или   |
-    |                             | ``None``.                                 |
+    | ``_process_runner``         | Приоритетный исполнитель subprocess-задач |
+    |                             | (``IProcessTaskRunner``) или ``None``     |
+    |                             | (fallback на потоковый путь в конвейере). |
+    +-----------------------------+-------------------------------------------+
+    | ``_pdf_worker``             | Picklable-функция извлечения текста       |
+    |                             | одного PDF или ``None`` (fallback).       |
     +-----------------------------+-------------------------------------------+
     | ``_document_metadata_service`` | Сервис обновления метаданных           |
     |                             | документов (может быть ``None``).         |
@@ -326,8 +365,9 @@ class ScanOrchestrator:
         event_bus: IEventBus,
         scan_executor: Executor | None = None,
         document_cache: IDocumentCache | None = None,
-        extract_executor: Executor | None = None,
         document_metadata_service: DocumentMetadataService | None = None,
+        process_runner: IProcessTaskRunner | None = None,
+        pdf_worker: Callable[..., Any] | None = None,
     ) -> None:
         """
         Инициализирует оркестратор сканирования.
@@ -366,13 +406,23 @@ class ScanOrchestrator:
         |                      | ``None``, используется прямое        |
         |                      | обращение к БД через ``ITextIndexer``.|
         +----------------------+--------------------------------------+
-        | ``extract_executor`` | Пул процессов для извлечения текста. |
-        |                      | Если ``None``, используется          |
-        |                      | ``scan_executor`` (потоки).          |
-        +----------------------+--------------------------------------+
         | ``document_metadata_service`` | Сервис обновления метаданных. |
         |                      | Если ``None``, обновление метаданных |
         |                      | не выполняется.                      |
+        +----------------------+--------------------------------------+
+        | ``process_runner``   | Приоритетный исполнитель             |
+        |                      | subprocess-задач (``IProcessTaskRunner``).|
+        |                      | Передаётся в ``ScanPipeline``;       |
+        |                      | если ``None`` — конвейер использует  |
+        |                      | потоковый fallback через             |
+        |                      | ``indexer.prepare_document_queries``.|
+        +----------------------+--------------------------------------+
+        | ``pdf_worker``       | Picklable-функция извлечения текста  |
+        |                      | одного PDF. Передаётся как           |
+        |                      | ``Callable`` без импорта             |
+        |                      | ``subprocess_tasks`` в application.  |
+        |                      | Обязателен при заданном              |
+        |                      | ``process_runner``.                  |
         +----------------------+--------------------------------------+
         """
         self._db = db
@@ -384,8 +434,9 @@ class ScanOrchestrator:
         self._event_bus = event_bus
         self._scan_executor = scan_executor
         self._document_cache = document_cache
-        self._extract_executor = extract_executor
         self._document_metadata_service = document_metadata_service
+        self._process_runner = process_runner
+        self._pdf_worker = pdf_worker
 
         self._cancel_requested = False
         self._current_pipeline: ScanPipeline | None = None
@@ -472,7 +523,7 @@ class ScanOrchestrator:
         | 6  | Создание ``ScanPipeline`` с параметрами из         |
         |    | ``config`` и передачей ``event_bus``,              |
         |    | ``scan_executor``, ``document_cache``,             |
-        |    | ``extract_executor``.                              |
+        |    | ``process_runner``, ``pdf_worker``.                |
         +----+----------------------------------------------------+
         | 7  | Сохранение ссылки на конвейер в                    |
         |    | ``_current_pipeline`` для возможности отмены       |
@@ -555,7 +606,8 @@ class ScanOrchestrator:
             max_extract_workers=config.SCAN_EXTRACT_WORKERS,
             scan_executor=self._scan_executor,
             document_cache=self._document_cache,
-            extract_executor=self._extract_executor,
+            process_runner=self._process_runner,
+            pdf_worker=self._pdf_worker,
         )
         self._current_pipeline = pipeline
 

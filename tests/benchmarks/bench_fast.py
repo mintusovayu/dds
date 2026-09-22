@@ -44,6 +44,31 @@ Mann-Whitney U test. Порог срабатывания: WARNING при дег�
   seed) фиксированы; содержимое детерминировано.
 - **PDF-файлы НЕ коммитятся** в репозиторий — экономия ~10 МБ.
 
+Язык корпуса — латиница
+-----------------------
+Все текстовые данные (слова для PDF и FTS5) — латинские. Причины:
+
+1. **Встроенный шрифт PyMuPDF.** ``page.insert_text`` без явного
+   ``fontname`` использует Helvetica (base-14 PDF font), которая
+   поддерживает Latin-1, но не кириллицу. При попытке вставить
+   кириллицу глифы отсутствуют, и в текстовый слой PDF попадают
+   placeholder-символы. WordIndex строится по этим placeholder'ам,
+   термины подсветки не находятся.
+2. **Содержание бенчмарка не важно.** Замеряется работа FTS5,
+   рендера и IPC — они не зависят от языка. Важна только
+   детерминированность и попадание в те же code paths.
+3. **Нормализация всё равно применяется.** ``normalize_text``
+   вызывается на обеих сторонах (индексация и запрос), чтобы
+   fixture работала по production-пути. Для латиницы функция
+   идемпотентна (понижение регистра), поэтому нормализованная
+   форма совпадает с оригиналом — это корректно.
+
+Кириллическая нормализация покрыта отдельными unit-тестами
+(``tests/test_text_normalization_domain.py``,
+``tests/test_fts5_match_builder.py``) и интеграционными тестами
+(``tests/test_query_tokenizer.py``). Бенчмарк измеряет производительность,
+а не корректность нормализации.
+
 Методология замеров
 -------------------
 Все бенчмарки используют ``benchmark(func)`` в auto-calibrate-режиме.
@@ -108,9 +133,12 @@ import pymupdf
 import pytest
 from dds_core.application.highlights_service import HighlightsService
 from dds_core.application.search_engine import SearchEngine
+from dds_core.domain import config as core_config
 from dds_core.domain.models import WordIndex
+from dds_core.domain.text_normalization import normalize_text
 from dds_core.infrastructure.database import DatabaseManager
 from dds_core.infrastructure.fts5_search_backend import FTS5SearchBackend
+from dds_core.infrastructure.process_task_runner import ProcessTaskRunner
 from dds_core.infrastructure.pymupdf_text_extractor import PyMuPDFTextExtractor
 from dds_core.infrastructure.sqlite_adapter import SQLiteAdapter
 
@@ -124,7 +152,7 @@ _SEARCH_DOCS_DEFAULT = 5000
 _SEARCH_PAGES_PER_DOC_DEFAULT = 10
 """Количество страниц на документ в датасете поиска по умолчанию."""
 
-_SEARCH_QUERY = "корпус"
+_SEARCH_QUERY = "corpus"
 """Поисковый запрос для бенчмарка search.query.
 
 Выбран так, чтобы:
@@ -135,11 +163,11 @@ _SEARCH_QUERY = "корпус"
 """
 
 _HIGHLIGHTS_TERMS: tuple[str, ...] = (
-    "корпус",
-    "гидрошпонка",
-    "дробление",
-    "фундамент",
-    "изоляция",
+    "corpus",
+    "sealant",
+    "crushing",
+    "foundation",
+    "insulation",
 )
 """Термины для бенчмарка highlights. Все присутствуют в тексте
 генерируемых страниц."""
@@ -152,22 +180,24 @@ _SMALL_PAGE_WORDS = 50
 
 _MEDIUM_WORDS = (
     # Набор слов, среди которых есть все термины из _HIGHLIGHTS_TERMS.
-    # Служит источником текста для PDF-генерации.
-    "корпус",
-    "гидрошпонка",
-    "дробление",
-    "фундамент",
-    "изоляция",
-    "монтаж",
-    "схема",
-    "узел",
-    "сечение",
-    "разрез",
-    "план",
-    "проект",
-    "чертёж",
-    "спецификация",
-    "ведомость",
+    # Служит источником текста для PDF-генерации и FTS5-записей.
+    # Латиница — см. раздел «Язык корпуса — латиница» в модульном
+    # docstring.
+    "corpus",
+    "sealant",
+    "crushing",
+    "foundation",
+    "insulation",
+    "mounting",
+    "scheme",
+    "node",
+    "section",
+    "cutaway",
+    "plan",
+    "project",
+    "drawing",
+    "spec",
+    "register",
 )
 
 _PDF_GENERATION_SEED = 42
@@ -175,6 +205,21 @@ _PDF_GENERATION_SEED = 42
 
 _TEXT_GENERATION_SEED = 42
 """Seed для random при генерации текстовых данных для FTS5."""
+
+_FORK_LATENCY_TIMEOUT = 10.0
+"""Таймаут для ``ProcessTaskRunner.run`` в бенчмарке fork_latency.
+
+Достаточно велик, чтобы forkserver успел стартовать (первый fork
+медленный, ~200–500 мс на холодную) и задача выполнилась. Если
+тест превышает этот таймаут — это баг, а не медленная машина.
+"""
+
+_FORK_LATENCY_PAYLOAD = "hello"
+"""Аргумент для ``len`` в бенчмарке fork_latency.
+
+Минимальный pickle-пейлоад: короткая строка. Pickle overhead не
+доминирует над fork, но остаётся ненулевым — как в production.
+"""
 
 
 # =====================================================================
@@ -208,9 +253,11 @@ def _generate_pdf(
 ) -> None:
     """Создаёт PDF-файл с одной страницей заданного размера.
 
-    Текст размещается сверху страницы блоками по 60 слов на блок;
-    переносы строк и позиции фиксированы (не зависят от random),
-    чтобы структура PDF была стабильна между запусками.
+    Текст размещается сверху страницы блоками по ~10 слов на строку;
+    координаты фиксированы, чтобы структура PDF (block_no / line_no)
+    была стабильна между запусками. Используется встроенный шрифт
+    Helvetica (base-14 PDF font), поддерживающий латиницу. См.
+    раздел «Язык корпуса — латиница» в модульном docstring.
 
     Операции:
 
@@ -270,6 +317,14 @@ def _bulk_populate_search_db(db_path: Path) -> None:
     ``SQLiteAdapter``. Применяется только в fixture setup; в
     production-коде запрещено (нарушает инкапсуляцию адаптера).
 
+    В колонку ``normalized_text`` записывается результат
+    :func:`normalize_text` — та же операция, что выполняет
+    ``query_builder.build_document_queries`` при индексации. Без
+    этого FTS5-запрос, преобразованный через
+    ``normalize_search_query`` (добавляет префикс
+    ``normalized_text:`` и нормализует термин), не нашёл бы
+    совпадений.
+
     Операции:
 
     +---+-----------------------------------------------------+
@@ -312,7 +367,7 @@ def _bulk_populate_search_db(db_path: Path) -> None:
 
         for p in range(pages_per_doc):
             text = _make_sentence(rng, 60)
-            fts_rows.append((doc_id, p, text, text))
+            fts_rows.append((doc_id, p, text, normalize_text(text)))
 
     conn = sqlite3.connect(str(db_path))
     try:
@@ -540,19 +595,30 @@ def highlights_service() -> HighlightsService:
 
 
 @pytest.fixture(scope="session")
-def process_runner() -> Iterator[Any]:
-    """ProcessTaskRunner с минимальной конфигурацией.
+def process_runner() -> Iterator[ProcessTaskRunner]:
+    """ProcessTaskRunner с production-конфигурацией.
 
-    Активируется в Фазе 4, когда появится
-    ``dds_core/infrastructure/process_task_runner.py``. До этого
-    момента фикстура помечена как skip-заглушка: тест
-    ``test_fork_latency`` не запускается.
+    Создаётся один раз на сессию. Параметры (max_concurrent,
+    batch_slots, shutdown_timeout) берутся из
+    ``dds_core.domain.config`` — те же, что в ``lifespan.py``.
+
+    Закрывается в teardown через ``asyncio.run`` в изолированном
+    loop'е: session-scoped event loop (``benchmark_event_loop``)
+    закрывается отдельной fixture, но ``close()`` не использует
+    семафоры runner'а — они создаются отдельно для бенчмарка.
 
     Yields:
-        Заглушка (не используется до Фазы 4).
+        Настроенный :class:`ProcessTaskRunner`.
     """
-    pytest.skip("activated in phase 4 (ProcessTaskRunner)")
-    yield None
+    runner = ProcessTaskRunner()
+    try:
+        yield runner
+    finally:
+        asyncio.run(
+            runner.close(
+                shutdown_timeout=core_config.PROCESS_RUNNER_SHUTDOWN_TIMEOUT,
+            )
+        )
 
 
 @pytest.fixture(scope="session")
@@ -562,7 +628,8 @@ def benchmark_event_loop() -> Iterator[asyncio.AbstractEventLoop]:
     Все async-бенчмарки используют один и тот же loop, потому что
     ``asyncio.Semaphore`` внутри ``ProcessTaskRunner`` привязывается
     к первому loop'у при использовании. Создание нового loop'а для
-    каждого вызова ``asyncio.run`` привело бы к ``RuntimeError``.
+    каждого вызова ``asyncio.run`` привело бы к ``RuntimeError``
+    на второй итерации.
 
     Yields:
         Открытый event loop.
@@ -738,27 +805,60 @@ def test_highlights_500_words(
     assert len(highlights) >= len(_HIGHLIGHTS_TERMS)
 
 
-@pytest.mark.skip(reason="activated in phase 4 (ProcessTaskRunner)")
 def test_fork_latency(
     benchmark: Any,
-    process_runner: Any,
+    process_runner: ProcessTaskRunner,
     benchmark_event_loop: asyncio.AbstractEventLoop,
 ) -> None:
     """Fork + IPC + Queue round-trip через ProcessTaskRunner.
 
-    Активируется в Фазе 4. До этого момента тест пропускается:
-    модуль ``process_task_runner`` ещё не существует.
+    Замеряет полный цикл process-per-task runner'а:
 
-    Замеряет накладные расходы process-per-task runner'а: старт
-    дочернего процесса, отправка аргументов, получение результата
-    через ``multiprocessing.Queue``, ожидание завершения.
+    1. Создание процесса через forkserver (первый вызов —
+       старт forkserver-сервера, последующие — fork).
+    2. Pickle-сериализация ``(len, ("hello",))``.
+    3. Выполнение ``len("hello")`` в дочернем процессе.
+    4. Возврат результата через ``multiprocessing.Queue``.
+    5. Ожидание завершения процесса родителем.
+
+    **Функция.** Встроенная ``len`` — picklable без дополнительных
+    import'ов в дочернем процессе. Возвращает целое число —
+    минимальный pickle-пейлоад. Это изолирует именно измерение
+    накладных расходов fork'а, не смешивая их с полезной работой.
+
+    **Event loop.** Используется session-scoped
+    ``benchmark_event_loop``: ``asyncio.Semaphore`` внутри
+    ``ProcessTaskRunner`` привязывается к первому loop'у при первом
+    использовании. Новый loop на каждый прогон → ``RuntimeError``.
+
+    **Прогрев.** Первый вызов включает старт forkserver-сервера
+    (~200–500 мс). Последующие — только fork (~30–50 мс).
+    pytest-benchmark с ``--benchmark-warmup=on`` прогревает
+    перед замерами; при локальном запуске без warmup первая
+    итерация будет выбросом.
+
+    Валидация setup: результат равен длине ``"hello"``.
 
     Args:
-        benchmark: Фикстура pytest-benchmark (тип не известен
-            статически — аннотирован как ``Any``).
-        process_runner: ProcessTaskRunner (заглушка до Фазы 4).
+        benchmark: Фикстура pytest-benchmark. Тип не известен
+            статически (pytest-benchmark не публикует stubs),
+            аннотирован как ``Any``.
+        process_runner: ProcessTaskRunner с production-конфигурацией.
         benchmark_event_loop: Session-scoped event loop.
     """
-    # Тело метода будет активировано в Фазе 4.
-    # До этого момента ``pytest.mark.skip`` предотвращает запуск.
-    ...
+    runner = process_runner
+    loop = benchmark_event_loop
+
+    def run() -> int:
+        return loop.run_until_complete(
+            runner.run(
+                len,
+                _FORK_LATENCY_PAYLOAD,
+                timeout=_FORK_LATENCY_TIMEOUT,
+            )
+        )
+
+    result = benchmark(run)
+
+    # Валидация setup: результат корректен.
+    assert result == len(_FORK_LATENCY_PAYLOAD)

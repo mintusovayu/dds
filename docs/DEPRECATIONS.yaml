@@ -59,6 +59,7 @@
 #   - docs/architecture-decisions/README.md (правила ADR)
 #   - ADR-002 (Remove Service Locator)  — записи Фазы 2
 #   - ADR-003 (Domain Text Normalization) — записи Фазы 3
+#   - ADR-004 (ProcessTaskRunner) — запись Фазы 4
 #   - ADR-005 (DocumentIndexPlan, запланирован) — записи Фазы 5
 #
 # =====================================================================
@@ -142,3 +143,30 @@ entries:
         сборка FTS5 MATCH-выражения из токенов.
       Замена для потребителей — прямой импорт из
       dds_core.infrastructure.fts5.match_builder.
+
+  # ===================================================================
+  # Фаза 4 — ProcessTaskRunner (ADR-004).
+  #
+  # Функция ``extract_document_queries`` перенесена из
+  # ``dds_core/application/extract_worker.py`` в
+  # ``dds_core/subprocess_tasks/pdf_workers.py``. Файл
+  # ``extract_worker.py`` удалён.
+  #
+  # Причина переноса: worker для subprocess должен быть в composition
+  # root (``subprocess_tasks``), где разрешён импорт infrastructure
+  # (создание PyMuPDFTextExtractor в дочернем процессе). Это
+  # устраняет временное исключение ``application-isolation``,
+  # действовавшее в фазах 0–3.
+  #
+  # Внешние модули из ``dds_modules/`` не используют внутреннюю
+  # функцию ядра — тип ``direct_removal`` с пустым ``module_users``.
+  # ===================================================================
+
+  - symbol: dds_core.application.extract_worker.extract_document_queries
+    type: direct_removal
+    removed_in_phase: 4
+    module_users: []
+    note: >
+      Перенесено в dds_core.subprocess_tasks.pdf_workers.extract_document_queries.
+      Вызывается через pdf_worker в composition root (dds_web.lifespan).
+      См. ADR-004 (ProcessTaskRunner).

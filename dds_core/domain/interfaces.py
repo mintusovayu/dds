@@ -29,6 +29,7 @@
     ``IHasher``              — абстракция хеширования файлов.
     ``IEventBus``            — абстракция шины событий.
     ``ITextIndexer``         — абстракция индексатора текстового слоя.
+    ``IProcessTaskRunner``   — абстракция исполнителя subprocess-задач.
     ``IDocumentCache``       — абстракция кэша таблицы documents.
     ``IModuleLifecycle``     — абстракция управления жизненным циклом модулей.
 
@@ -76,11 +77,46 @@ cached_meta[0], cached_meta[1])``. Это скрывало реальный ба
 ``dds_core/application/indexer.py``) и потребитель
 (``dds_core/application/scan_pipeline.py``) обновлены в
 соответствующих шагах плана.
+
+Добавление ``IProcessTaskRunner`` (Фаза 4):
+
+Протокол ``IProcessTaskRunner`` введён для инверсии зависимостей
+между ``application`` и ``infrastructure``. ``ScanPipeline``
+(application layer) выполняет извлечение текста в subprocess через
+исполнителя, не зная о конкретной реализации
+(``ProcessTaskRunner`` с ``forkserver`` и ``mp.Queue``). Это
+устраняет нарушение контракта ``application-isolation``: без
+Protocol ``ScanPipeline`` импортировал бы
+``dds_core.infrastructure.process_task_runner`` напрямую.
+
+Конкретная реализация передаётся через DI в composition root
+(``dds_web/lifespan.py``). Worker-функция (например,
+``extract_document_queries``) передаётся как ``Callable`` — без
+импорта ``dds_core.subprocess_tasks`` из application, что
+сохраняет контракт ``subprocess-tasks-isolation``.
+
+Сигнатура ``run`` (усиление до точной типизации):
+
+Протокол ``IProcessTaskRunner.run`` типизирован generic-параметром
+``_T`` и ``Literal["interactive", "batch"]`` для ``kind``. Это
+соответствует сигнатуре реализации ``ProcessTaskRunner.run`` из
+``dds_core/infrastructure/process_task_runner.py`` (см.
+``TypeVar _T`` и ``Literal``-параметр). Ранняя версия Protocol
+использовала более широкие типы (``Callable[..., Any]`` и
+``kind: str``), что нарушало LSP: реализация оказывалась **уже**
+контракта, и статические анализаторы не могли считать
+``ProcessTaskRunner`` подтипом ``IProcessTaskRunner``.
+
+Усиление Protocol (не ослабление реализации) сохраняет
+типобезопасность: возвращаемое значение ``run`` связано с типом
+``func`` (``Callable[..., _T] -> _T``), а ``kind`` ограничен
+двумя допустимыми значениями.
 """
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from collections.abc import Callable
+from typing import Any, Literal, Protocol, TypeVar, runtime_checkable
 
 from .events import Event
 from .models import (
@@ -93,6 +129,16 @@ from .models import (
     SearchResult,
     WordIndex,
 )
+
+_T = TypeVar("_T")
+"""Параметр типа для ``IProcessTaskRunner.run``.
+
+Позволяет Protocol связать тип возвращаемого значения с типом
+вызываемой функции: ``run(func: Callable[..., _T]) -> _T``.
+Соответствует сигнатуре ``ProcessTaskRunner.run`` и обеспечивает
+статическую проверку типа результата при использовании
+``IProcessTaskRunner`` через DI.
+"""
 
 # ======================================================================
 # Обязательный интерфейс модуля: жизненный цикл
@@ -1832,6 +1878,135 @@ class ITextIndexer(Protocol):
             сигнатура изменилась с ``tuple[int, str] | None`` на
             ``tuple[str, str, int, str] | None``. Кастомные
             реализации ``ITextIndexer`` должны быть обновлены.
+        """
+        ...
+
+
+@runtime_checkable
+class IProcessTaskRunner(Protocol):
+    """
+    Абстракция исполнителя subprocess-задач.
+
+    Реализуется инфраструктурным слоем
+    (``dds_core/infrastructure/process_task_runner.py``). Ядро DDS
+    использует этот интерфейс для запуска задач в изолированных
+    процессах, не зная о конкретной реализации
+    (``forkserver`` / ``spawn``, ``mp.Queue``, semaphore).
+
+    Потребители:
+
+    - ``dds_core.application.scan_pipeline.ScanPipeline`` — извлечение
+      текста одного PDF в subprocess (устойчивость к сегфолтам
+      PyMuPDF, изоляция состояния между задачами).
+
+    Контракт:
+
+    - Аргументы ``func`` и ``*args`` должны быть pickle-сериализуемыми.
+      Вызывающий код (application layer) обязан передавать модульные
+      функции и примитивные аргументы.
+    - Результат ``func`` также должен быть pickle-сериализуемым.
+    - Таймаут применяется к ожиданию результата; при срабатывании
+      процесс принудительно завершается (SIGTERM → SIGKILL).
+    - Метод ``close`` идемпотентен и завершает все активные процессы.
+
+    Инверсия зависимостей:
+
+    - ``application`` зависит от ``IProcessTaskRunner`` (domain),
+      а не от ``ProcessTaskRunner`` (infrastructure).
+    - Конкретная реализация передаётся через DI в composition root
+      (``dds_web/lifespan.py``).
+    - Worker-функция передаётся как ``Callable`` — без импорта
+      ``dds_core.subprocess_tasks`` из application, что сохраняет
+      контракт ``subprocess-tasks-isolation``.
+
+    Сигнатура ``run`` (усиление до точной типизации):
+
+    Generic-параметр ``_T`` связывает тип возвращаемого значения с
+    типом ``func``: ``run(func: Callable[..., _T]) -> _T``. Параметр
+    ``kind`` ограничен ``Literal["interactive", "batch"]``. Это
+    соответствует сигнатуре ``ProcessTaskRunner.run`` из
+    ``dds_core/infrastructure/process_task_runner.py`` и сохраняет
+    LSP-совместимость (реализация не уже контракта).
+
+    Реализации:
+        ``dds_core/infrastructure/process_task_runner.py`` →
+        ``ProcessTaskRunner``.
+    """
+
+    async def run(
+        self,
+        func: Callable[..., _T],
+        *args: Any,
+        timeout: float,
+        kind: Literal["interactive", "batch"] = "interactive",
+    ) -> _T:
+        """
+        Выполняет picklable-функцию в отдельном процессе.
+
+        Операции:
+
+        +---+-----------------------------------------------------+
+        | № | Описание                                            |
+        +===+=====================================================+
+        | 1 | Захват свободного слота (по ``kind``).              |
+        +---+-----------------------------------------------------+
+        | 2 | Pickle-сериализация ``func`` и ``args``.            |
+        +---+-----------------------------------------------------+
+        | 3 | Создание процесса и очереди результата.             |
+        +---+-----------------------------------------------------+
+        | 4 | Запуск процесса (через forkserver / spawn).         |
+        +---+-----------------------------------------------------+
+        | 5 | Ожидание результата с таймаутом и контролем         |
+        |   | жизни процесса.                                     |
+        +---+-----------------------------------------------------+
+        | 6 | При срабатывании таймаута — принудительное          |
+        |   | завершение (SIGTERM → SIGKILL).                     |
+        +---+-----------------------------------------------------+
+        | 7 | Распаковка результата.                              |
+        +---+-----------------------------------------------------+
+
+        Args:
+            func: Callable уровня модуля (picklable).
+            *args: Позиционные аргументы (picklable).
+            timeout: Таймаут в секундах. Если ``<= 0`` — отключён.
+            kind: ``"interactive"`` (основной пул) или ``"batch"``
+                (резервированные слоты).
+
+        Returns:
+            Результат ``func(*args)``.
+
+        Raises:
+            RuntimeError: Runner закрыт; аргументы не pickle-
+                сериализуемы; worker завершился без ответа.
+            TimeoutError: Превышен ``timeout``.
+            BaseException: Любое исключение из ``func``.
+        """
+        ...
+
+    async def close(self, shutdown_timeout: float | None = None) -> None:
+        """
+        Закрывает runner и завершает активные процессы.
+
+        Операции:
+
+        +---+-----------------------------------------------------+
+        | № | Описание                                            |
+        +===+=====================================================+
+        | 1 | Установка флага закрытия (новые ``run`` получают     |
+        |   | ``RuntimeError``).                                  |
+        +---+-----------------------------------------------------+
+        | 2 | ``terminate()`` (SIGTERM) всем активным процессам.  |
+        +---+-----------------------------------------------------+
+        | 3 | Ожидание завершения до ``shutdown_timeout``.         |
+        +---+-----------------------------------------------------+
+        | 4 | Оставшимся: ``kill()`` (SIGKILL).                   |
+        +---+-----------------------------------------------------+
+
+        Метод идемпотентен: повторный вызов — no-op.
+
+        Args:
+            shutdown_timeout: Таймаут graceful shutdown в секундах.
+                Если ``None`` — значение из конструктора реализации.
         """
         ...
 

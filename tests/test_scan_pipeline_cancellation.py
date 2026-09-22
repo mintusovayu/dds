@@ -22,33 +22,45 @@
 ``run_async``, поэтому флаг отмены одного запуска не влияет на
 следующий.
 
-Статус активации (Фаза 0)
--------------------------
+Статус активации (Фаза 4 → Фаза 5)
+----------------------------------
+
 Все тесты модуля помечены ``pytestmark = pytest.mark.skip`` и будут
 активированы в **Фазе 5** плана рефакторинга v9. До этого момента
 они зависят от API, которого ещё нет в проекте:
 
-- ``ProcessTaskRunner`` (появляется в Фазе 4) — заменяет параметр
-  ``extract_executor`` и используется как основной исполнитель
-  для извлечения текста;
+- ``DocumentIndexPlan`` (появляется в Фазе 5) — доменная модель
+  плана индексации без SQL-строк.
 - ``index_plan_worker`` (появляется в Фазе 5) — callable для
-  построения ``DocumentIndexPlan`` в subprocess;
-- ``TextIndexer`` с конструктором ``(index_writer=...)``
-  (появляется в Фазе 5) — используется в конвейере.
+  построения ``DocumentIndexPlan`` в subprocess; заменяет
+  ``pdf_worker`` (последний использовался как временный путь
+  через ``extract_document_queries`` до появления плана).
+- ``TextIndexer.prepare_index_plan`` / ``write_index_plans``
+  (появляются в Фазе 5) — заменяют
+  ``prepare_document_queries`` / ``write_documents_batch``.
 
-Дополнительно в Фазе 4 из ``ScanPipeline.__init__`` удаляется
-параметр ``text_extractor`` (S1 рефакторинга). В Фазе 0 он ещё
-присутствует — тесты учитывают это в фабрике ``_make_pipeline``.
+Что **уже сделано** в Фазе 4 (не требует повторного изменения при
+активации в Фазе 5):
 
-Инфраструктура тестов (заглушки, фабрика, fixtures) сохранена
-и готова к активации. При переходе к Фазе 5 достаточно:
+- ``ScanPipeline.__init__`` принимает опциональные ``process_runner``
+  (``IProcessTaskRunner``) и ``pdf_worker`` (``Callable``). При
+  активации тестов фабрика :func:`_make_pipeline` передаёт их
+  явно через параметры; если не передать — используется потоковый
+  fallback через ``indexer.prepare_document_queries``.
+- Заглушка :func:`_noop_pdf_worker` (модульная picklable-функция)
+  заменит worker в тестовом сценарии: путь через ``process_runner``
+  будет вызываться, но реального PDF-анализа не произойдёт.
+
+Что **предстоит сделать** при активации в Фазе 5:
 
 1. Снять ``pytestmark = pytest.mark.skip(...)`` с модуля.
-2. В фабрике ``_make_pipeline`` заменить ``text_extractor`` на
-   ``process_runner`` и ``index_plan_worker`` (см. комментарий
-   в коде фабрики).
-3. Восстановить импорты ``ProcessTaskRunner`` и
-   ``build_index_plan_in_subprocess``.
+2. В фабрике :func:`_make_pipeline` заменить передачу ``pdf_worker``
+   на ``index_plan_worker`` (в Фазе 5 ``DocumentIndexPlan`` заменит
+   «сырые» SQL-запросы).
+3. Восстановить импорт ``build_index_plan_in_subprocess`` из
+   ``dds_core.subprocess_tasks.pdf_workers`` (в Фазе 5 функция
+   получит имя ``build_index_plan_in_subprocess`` и сменит
+   сигнатуру/возвращаемый тип).
 
 Стратегия тестирования
 ----------------------
@@ -73,7 +85,7 @@
   закрывается в teardown.
 
 Заглушка ``_StubIndexer`` реализует контракт ``ITextIndexer``
-**Фазы 0** (методы ``prepare_document_queries``,
+**Фазы 4** (методы ``prepare_document_queries``,
 ``write_documents_batch``, ``get_document_metadata``,
 ``get_document_by_hash``, ``get_document_by_path``,
 ``remove_document``). В Фазе 5 контракт изменится — заглушка
@@ -92,8 +104,8 @@
 -------
 - **Таймауты извлечения** (``OPERATION_TIMEOUTS["scan.extract"]``)
   не тестируются здесь: они относятся к ``ProcessTaskRunner``
-  (см. ``tests/test_process_runner_timeout.py``, создаваемый в
-  Фазе 4). Этот файл покрывает только логику ``ScanPipeline``.
+  (см. ``tests/test_process_runner_timeout.py``). Этот файл
+  покрывает только логику ``ScanPipeline``.
 - **MAX_SCAN_ERRORS** — отдельный сценарий; тестируется в файлах
   обработки ошибок.
 - **Реальное извлечение текста** через PyMuPDF — не в области
@@ -116,7 +128,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -135,9 +147,17 @@ from dds_core.infrastructure.sqlite_adapter import SQLiteAdapter
 # ----------------------------------------------------------------------
 #
 # Все тесты модуля пропущены до Фазы 5. Причина — зависимость от
-# API, которое появится в Фазах 4/5 (см. модульный docstring,
+# API, которое появится в Фазе 5 (см. модульный docstring,
 # раздел «Статус активации»). Инфраструктура тестов (заглушки,
 # фабрика, fixtures) сохранена и готова к активации.
+#
+# Фаза 4 добавила в ScanPipeline.__init__ параметры process_runner
+# и pdf_worker, поэтому фабрика _make_pipeline принимает их как
+# опциональные. При активации в Фазе 5 достаточно:
+#   1. Снять pytestmark.
+#   2. Заменить pdf_worker на index_plan_worker (см. docstring
+#      _make_pipeline).
+#   3. Восстановить импорт build_index_plan_in_subprocess.
 # ----------------------------------------------------------------------
 pytestmark = pytest.mark.skip(reason="activated in phase 5 (ProcessTaskRunner, DocumentIndexPlan)")
 
@@ -224,7 +244,7 @@ class _StubHasher:
 class _StubIndexer:
     """Заглушка ``ITextIndexer``.
 
-    Реализует контракт ``ITextIndexer`` **Фазы 0**:
+    Реализует контракт ``ITextIndexer`` **Фазы 4**:
 
     - ``prepare_document_queries`` — подготовка SQL-запросов
       для одного документа (возвращает ``None`` — «пустой
@@ -247,11 +267,7 @@ class _StubIndexer:
       плана v9).
 
     При активации тестов в Фазе 5 заглушка должна быть обновлена
-    в соответствии с новым контрактом. Соответствующие методы
-    (``prepare_index_plan``, ``write_index_plans``) уже присутствуют
-    как заготовки — после Фазы 5 они станут актуальными, а
-    старые (``prepare_document_queries``, ``write_documents_batch``)
-    будут удалены вместе с интерфейсом.
+    в соответствии с новым контрактом.
     """
 
     def prepare_document_queries(
@@ -263,7 +279,7 @@ class _StubIndexer:
         last_modified: str,
         abs_file_path: str,
     ) -> list[tuple[str, tuple]] | None:
-        """Фаза 0: возвращает ``None`` («нет данных для индексации»).
+        """Фаза 4: возвращает ``None`` («нет данных для индексации»).
 
         В реальной реализации метод открывает PDF и формирует SQL
         для страниц. В заглушке — no-op: тесты проверяют логику
@@ -278,7 +294,7 @@ class _StubIndexer:
         self,
         document_batches: list[list[tuple[str, tuple]]],
     ) -> tuple[int, int]:
-        """Фаза 0: батчевая запись. Возвращает ``(N, 0)``."""
+        """Фаза 4: батчевая запись. Возвращает ``(N, 0)``."""
         return len(document_batches), 0
 
     def remove_document(self, doc_id: str) -> None:
@@ -310,15 +326,10 @@ class _StubIndexer:
 class _StubTextExtractor:
     """Заглушка ``ITextExtractor``.
 
-    Используется в Фазе 0 как обязательный параметр конструктора
-    ``ScanPipeline``. В Фазе 4 параметр удаляется из конструктора
-    (извлечение текста выполняется через ``ProcessTaskRunner``,
-    который сам создаёт экстрактор внутри subprocess), и эта
-    заглушка становится не нужна.
-
-    Методы не вызываются: тесты модуля пропущены. Класс существует
-    для совместимости с сигнатурой ``ScanPipeline.__init__``
-    в Фазе 0.
+    Используется как обязательный параметр конструктора
+    ``ScanPipeline`` (поле ``text_extractor``). Внутри конвейера
+    не вызывается напрямую: извлечение текста выполняется через
+    ``process_runner`` или через ``_indexer.prepare_document_queries``.
     """
 
     def open_document(self, file_path: str) -> Any:
@@ -327,7 +338,7 @@ class _StubTextExtractor:
 
 
 class _StubProcessRunner:
-    """Заглушка ``ProcessTaskRunner``.
+    """Заглушка ``IProcessTaskRunner``.
 
     Эмулирует работу ``process_runner.run`` через ``asyncio.sleep``,
     не создавая дочерних процессов. Публичный интерфейс совпадает
@@ -338,9 +349,9 @@ class _StubProcessRunner:
     перед вызовом ``pipeline.cancel()``, чтобы гарантировать, что
     конвейер действительно начал обработку.
 
-    Активируется в Фазе 4/5: до этого момента класс используется
-    только как часть ``_Stubs`` (обращения к его полям в
-    skip-тестах не выполняются).
+    При активации в Фазе 5 будет использоваться вместо реального
+    ``ProcessTaskRunner``; фабрика :func:`_make_pipeline` передаёт
+    его через параметр ``process_runner``.
     """
 
     def __init__(self, delay: float) -> None:
@@ -356,16 +367,20 @@ class _StubProcessRunner:
         timeout: float,
         kind: str = "interactive",
     ) -> Any:
-        """Эмулирует работу: sleep(delay) → пустой план."""
+        """Эмулирует работу: sleep(delay) → ``None``.
+
+        Возвращает ``None`` — это соответствует поведению
+        реального ``pdf_worker`` при ошибке открытия PDF. Конвейер
+        интерпретирует результат как «файл помечен ошибочным», но
+        в контексте тестов отмены это не важно.
+        """
         if self._closed:
             raise RuntimeError("ProcessTaskRunner is closed")
         self.call_count += 1
         if not self.first_call_event.is_set():
             self.first_call_event.set()
         await asyncio.sleep(self._delay)
-        # Пустой план — валидное значение DocumentIndexPlan.
-        # Записывается через _StubIndexer.write_index_plans.
-        return []
+        return None
 
     async def close(self, shutdown_timeout: float = 10.0) -> None:
         """No-op: заглушка не владеет ресурсами."""
@@ -385,12 +400,12 @@ class _Stubs:
         scanner: Заглушка ``IScanner``.
         hasher: Заглушка ``IHasher``.
         indexer: Заглушка ``ITextIndexer``.
-        text_extractor: Заглушка ``ITextExtractor`` (используется
-            в Фазе 0 как обязательный параметр конструктора
-            ``ScanPipeline``).
-        process_runner: Заглушка ``ProcessTaskRunner``.
-            Активируется в Фазе 4/5; до этого момента хранится в
-            контейнере для совместимости сигнатур тестов.
+        text_extractor: Заглушка ``ITextExtractor`` (обязательный
+            параметр ``ScanPipeline.__init__``; внутри конвейера
+            не вызывается напрямую).
+        process_runner: Заглушка ``IProcessTaskRunner``. Передаётся
+            в ``ScanPipeline`` при активации тестов в Фазе 5 (см.
+            параметр ``process_runner`` фабрики :func:`_make_pipeline`).
         rd_directory: Фиктивный корневой каталог РД.
     """
 
@@ -407,6 +422,9 @@ def _make_pipeline(
     stubs: _Stubs,
     executor: ThreadPoolExecutor,
     event_bus: IEventBus,
+    *,
+    process_runner: Any | None = None,
+    pdf_worker: Callable[..., Any] | None = None,
 ) -> ScanPipeline:
     """Собирает ``ScanPipeline`` со стабами для теста отмены.
 
@@ -414,21 +432,27 @@ def _make_pipeline(
     реальные, но изолированные компоненты (SQLite на tmp, unstarted
     event bus).
 
-    В **Фазе 0** конструктор ``ScanPipeline`` принимает
-    ``text_extractor`` и ``extract_executor``; параметров
-    ``process_runner`` и ``index_plan_worker`` ещё нет.
+    Параметры ``process_runner`` и ``pdf_worker`` опциональны.
+    Если заданы — ``ScanPipeline`` использует приоритетный путь
+    извлечения через subprocess (Фаза 4). Если ``None`` —
+    используется потоковый fallback через
+    ``indexer.prepare_document_queries`` в ``scan_executor``.
 
-    В **Фазе 4/5** сигнатура меняется (см. S1 и S2 рефакторинга):
+    При активации тестов в Фазе 5 фабрика будет вызываться так::
 
-    - ``text_extractor`` удаляется (извлечение через
-      ``ProcessTaskRunner``);
-    - добавляются ``process_runner`` и ``index_plan_worker``.
+        _make_pipeline(
+            db, stubs, executor, event_bus,
+            process_runner=stubs.process_runner,
+            pdf_worker=_noop_pdf_worker,
+        )
 
-    При активации тестов в Фазе 5 фабрику нужно обновить:
-    заменить ``text_extractor=...`` на
-    ``process_runner=stubs.process_runner`` и
-    ``index_plan_worker=_noop_index_plan_worker``, а также
-    восстановить импорт ``ProcessTaskRunner``.
+    Начиная с Фазы 5 сигнатура расширится:
+
+    - ``pdf_worker`` заменится на ``index_plan_worker`` (см.
+      ``DocumentIndexPlan``);
+    - сигнатура воркера изменится: вместо 6 позиционных
+      аргументов — кортеж параметров и возвращаемый тип
+      ``DocumentIndexPlan | None``.
 
     Args:
         db: Реальный SQLiteAdapter на tmp_path с созданной схемой.
@@ -436,6 +460,14 @@ def _make_pipeline(
         executor: Реальный ThreadPoolExecutor для блокирующих
             операций (scan_directory, hashing, write_index_plans).
         event_bus: AsyncEventBus (не запущен).
+        process_runner: Опциональный ``IProcessTaskRunner``.
+            Если задан — используется приоритетный путь
+            извлечения (Фаза 4). Значение по умолчанию ``None``
+            сохраняет потоковый fallback.
+        pdf_worker: Опциональная picklable-функция извлечения
+            текста одного PDF. Обязательна при заданном
+            ``process_runner``. Значение по умолчанию ``None``
+            сохраняет потоковый fallback.
 
     Returns:
         Настроенный ``ScanPipeline``.
@@ -444,26 +476,59 @@ def _make_pipeline(
         db=db,
         scanner=stubs.scanner,
         hasher=stubs.hasher,
-        text_extractor=stubs.text_extractor,  # ← Фаза 0
+        text_extractor=stubs.text_extractor,
         indexer=stubs.indexer,
         event_bus=event_bus,
         max_hash_workers=2,
         max_extract_workers=2,
         scan_executor=executor,
         document_cache=None,
-        # В Фазе 5 добавить:
-        #   process_runner=stubs.process_runner,
-        #   index_plan_worker=_noop_index_plan_worker,
+        process_runner=process_runner,
+        pdf_worker=pdf_worker,
     )
+
+
+def _noop_pdf_worker(
+    abs_file_path: str,
+    doc_id: str,
+    relative_path: str,
+    file_hash: str,
+    file_size: int,
+    last_modified: str,
+) -> list[tuple[str, tuple]] | None:
+    """Фиктивный worker для ``pdf_worker`` в тестах отмены.
+
+    Модульная (picklable) функция с сигнатурой, совпадающей
+    с ``extract_document_queries``. Возвращает ``None`` — как
+    реальный worker при ошибке открытия PDF. Используется
+    заглушкой ``_StubProcessRunner``: ``run(_noop_pdf_worker, ...)``
+    вызывается без реального subprocess, но с корректным
+    интерфейсом.
+
+    Начиная с Фазы 5 будет заменена на ``index_plan_worker`` с
+    другой сигнатурой и возвращаемым типом ``DocumentIndexPlan``.
+
+    Args:
+        abs_file_path: Абсолютный путь к PDF.
+        doc_id: Идентификатор документа.
+        relative_path: Относительный путь (от каталога РД).
+        file_hash: Хеш файла.
+        file_size: Размер файла в байтах.
+        last_modified: Дата изменения (ISO 8601).
+
+    Returns:
+        ``None`` (сигнал «нет данных для индексации»).
+    """
+    return None
 
 
 def _noop_index_plan_worker(*args: Any, **kwargs: Any) -> list[Any]:
     """Фиктивный worker для ``index_plan_worker`` (Фаза 5).
 
-    Возвращает пустой план. В Фазе 0 не используется: параметр
-    ``index_plan_worker`` появится в конструкторе ``ScanPipeline``
-    только в Фазе 5. Функция сохранена как заготовка для
-    активации.
+    Возвращает пустой план. В Фазе 4 не используется: параметр
+    ``index_plan_worker`` появится в ``ScanPipeline`` только в
+    Фазе 5 (вместе с ``DocumentIndexPlan``). Функция сохранена
+    как заготовка для активации.
     """
     return []
 

@@ -12,8 +12,9 @@
     ``_file_queue`` → проверка метаданных и хеша → ``_extract_queue``
     Обновление счётчиков ``skipped_files``, ``duplicate_files``, ``error_files``.
 
-Этап 3: Извлечение текста и батчевая запись (через ProcessPoolExecutor или пул потоков)
-    ``_extract_queue`` → ``extract_document_queries`` или ``TextIndexer.prepare_document_queries`` →
+Этап 3: Извлечение текста и батчевая запись (через ``IProcessTaskRunner``
+        или пул потоков)
+    ``_extract_queue`` → ``process_runner.run(pdf_worker, ...)`` →
     буфер → ``TextIndexer.write_documents_batch`` → БД
     Обновление счётчиков ``indexed_files``, ``error_files``.
 
@@ -76,10 +77,13 @@
 |                               | ``ScanOrchestrator.run_primary_scan``.   |
 +-------------------------------+------------------------------------------+
 | Отслеживание зависших         | При таймауте извлечения текста           |
-| процессов                     | трекер фиксирует зависший процесс.       |
-|                               | При достижении порога                    |
-|                               | ``_max_extract_workers`` конвейер        |
-|                               | переключается на потоковый fallback.     |
+| процессов                     | трекер фиксирует зависший процесс        |
+|                               | (``record_stuck_process``). Метрика      |
+|                               | используется для диагностики:            |
+|                               | ``ProcessTaskRunner`` сам убивает        |
+|                               | зависший процесс при срабатывании        |
+|                               | таймаута, следующий вызов стартует       |
+|                               | штатно.                                  |
 +-------------------------------+------------------------------------------+
 | Безопасное завершение при     | При отмене сканирования остаток буфера   |
 | отмене                        | не записывается в БД. При вынужденном    |
@@ -90,7 +94,7 @@
 |                               | ``_cancel_event`` (не на булевом флаге). |
 |                               | Воркеры ожидают задачу через             |
 |                               | ``_wait_task_or_cancel``, а отправляют   |
-|                               | результаты через ``_put_or_cancel``.    |
+|                               | результаты через ``_put_or_cancel``.     |
 |                               | Оба используют ``asyncio.wait`` с        |
 |                               | приоритетом отмены: при одновременной    |
 |                               | готовности — побеждает отмена.           |
@@ -124,6 +128,25 @@
 |                               | элемента после ``isinstance``-проверок   |
 |                               | (``str | _QueueSentinel`` → ``str``).    |
 +-------------------------------+------------------------------------------+
+| Извлечение текста через      | Приоритетный путь: задача извлечения     |
+| ``IProcessTaskRunner``        | выполняется в subprocess через           |
+| (Фаза 4)                      | ``process_runner.run(pdf_worker, ...)``. |
+|                               | Это обеспечивает изоляцию состояния      |
+|                               | (forkserver) и устойчивость к сегфолтам  |
+|                               | PyMuPDF. Worker-функция передаётся как   |
+|                               | ``Callable`` без импорта                 |
+|                               | ``subprocess_tasks`` в application       |
+|                               | (сохраняет контракт                       |
+|                               | ``subprocess-tasks-isolation``).         |
++-------------------------------+------------------------------------------+
+| Потоковый fallback           | Если ``process_runner`` или ``pdf_worker``|
+| (если runner не задан)        | не переданы, извлечение выполняется в    |
+|                               | ``scan_executor`` через                  |
+|                               | ``indexer.prepare_document_queries``.    |
+|                               | В production ``lifespan`` всегда         |
+|                               | передаёт runner; fallback используется   |
+|                               | в тестах и edge-сценариях.               |
++-------------------------------+------------------------------------------+
 
 Принципы:
 - Application layer: оркестрирует, не содержит бизнес-логики.
@@ -139,10 +162,10 @@ import asyncio
 import logging
 import sqlite3
 import uuid
+from collections.abc import Callable
 from concurrent.futures import Executor
-from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
-from typing import Final, TypeVar
+from typing import Any, Final, TypeVar
 
 from ..domain import config
 from ..domain.events import FileProcessingFailed
@@ -151,6 +174,7 @@ from ..domain.interfaces import (
     IDocumentCache,
     IEventBus,
     IHasher,
+    IProcessTaskRunner,
     IScanner,
     ITextExtractor,
     ITextIndexer,
@@ -162,7 +186,6 @@ from ..domain.models import (
     ScanStatus,
 )
 from .async_utils import run_blocking_in_executor
-from .extract_worker import extract_document_queries
 from .progress_tracker import ScanProgressTracker
 from .timeout_guard import run_with_timeout
 
@@ -308,10 +331,10 @@ class ScanPipeline:
 
     Отслеживание зависших процессов:
     При таймауте извлечения текста трекер фиксирует зависший
-    процесс через ``record_stuck_process()``. При достижении
-    порога ``_max_extract_workers`` конвейер устанавливает
-    ``_executor_broken = True`` и переключается на потоковый
-    fallback.
+    процесс через ``record_stuck_process()``. Метрика используется
+    для диагностики; ``ProcessTaskRunner`` сам убивает зависший
+    процесс при срабатывании таймаута, поэтому автоматическое
+    переключение на потоковый fallback не требуется.
 
     Безопасное завершение при отмене:
     При отмене сканирования (``_cancel_event.is_set()``) остаток
@@ -327,6 +350,16 @@ class ScanPipeline:
     - mypy не выводит ``| None`` из-за отложенной инициализации;
     - очереди гарантированно пусты перед каждым запуском (важно
       при повторных вызовах ``run_async`` в рамках одного процесса).
+
+    Извлечение текста (Фаза 4):
+    Приоритетный путь — через ``IProcessTaskRunner``: задача
+    извлечения выполняется в subprocess, что даёт изоляцию
+    состояния и устойчивость к сегфолтам PyMuPDF. Worker-функция
+    (``pdf_worker``) передаётся как ``Callable`` из composition
+    root (``lifespan.py``). Если ``process_runner`` или
+    ``pdf_worker`` не заданы, используется потоковый fallback
+    через ``indexer.prepare_document_queries`` в ``scan_executor``
+    (тесты, edge-сценарии).
 
     Attributes:
 
@@ -349,11 +382,13 @@ class ScanPipeline:
     +-------------------------+-------------------------------------------+
     | ``_document_cache``     | Кэш метаданных документов или ``None``.   |
     +-------------------------+-------------------------------------------+
-    | ``_extract_executor``   | Пул процессов для извлечения текста или   |
-    |                         | ``None`` (fallback на потоки).            |
+    | ``_process_runner``     | Приоритетный исполнитель subprocess-задач |
+    |                         | (``IProcessTaskRunner``) или ``None``     |
+    |                         | (fallback на потоковый путь).             |
     +-------------------------+-------------------------------------------+
-    | ``_executor_broken``    | Флаг, указывающий, что пул процессов      |
-    |                         | сломан и следует использовать fallback.   |
+    | ``_pdf_worker``         | Picklable-функция для извлечения текста   |
+    |                         | одного PDF в subprocess, или ``None``     |
+    |                         | (fallback на потоковый путь).             |
     +-------------------------+-------------------------------------------+
     | ``_cancel_event``       | ``asyncio.Event`` для кооперативной       |
     |                         | отмены. Создаётся в ``run_async``,        |
@@ -379,7 +414,8 @@ class ScanPipeline:
         max_extract_workers: int | None = None,
         scan_executor: Executor | None = None,
         document_cache: IDocumentCache | None = None,
-        extract_executor: Executor | None = None,
+        process_runner: IProcessTaskRunner | None = None,
+        pdf_worker: Callable[..., Any] | None = None,
     ) -> None:
         """
         Инициализирует конвейер параллельного сканирования.
@@ -394,10 +430,10 @@ class ScanPipeline:
         | 2 | Инициализация ``_tracker`` через                     |
         |   | ``ScanProgressTracker(event_bus)``.                  |
         +---+-----------------------------------------------------+
-        | 3 | Сохранение ``_document_cache`` и                     |
-        |   | ``_extract_executor``.                               |
+        | 3 | Сохранение ``_document_cache``.                      |
         +---+-----------------------------------------------------+
-        | 4 | Установка ``_executor_broken = False``.              |
+        | 4 | Сохранение ``_process_runner`` и ``_pdf_worker``     |
+        |   | (приоритетный путь извлечения текста).               |
         +---+-----------------------------------------------------+
         | 5 | Инициализация ``_cancel_event = None``. Событие      |
         |   | создаётся в ``run_async``.                          |
@@ -408,6 +444,53 @@ class ScanPipeline:
         |   | чтобы тип поля был non-Optional. В ``run_async``     |
         |   | они пересоздаются — очищаются между запусками.      |
         +---+-----------------------------------------------------+
+
+        Параметры:
+
+        +----------------------+--------------------------------------+
+        | Параметр             | Описание                             |
+        +======================+======================================+
+        | ``db``               | Реализация ``IDatabase`` для доступа |
+        |                      | к БД.                                |
+        +----------------------+--------------------------------------+
+        | ``scanner``          | Реализация ``IScanner`` для          |
+        |                      | сканирования каталога.               |
+        +----------------------+--------------------------------------+
+        | ``hasher``           | Реализация ``IHasher`` для           |
+        |                      | хеширования файлов.                  |
+        +----------------------+--------------------------------------+
+        | ``text_extractor``   | Реализация ``ITextExtractor`` для    |
+        |                      | извлечения текста.                   |
+        +----------------------+--------------------------------------+
+        | ``indexer``          | Реализация ``ITextIndexer`` для      |
+        |                      | подготовки и записи индекса.         |
+        +----------------------+--------------------------------------+
+        | ``event_bus``        | Шина событий для публикации событий. |
+        +----------------------+--------------------------------------+
+        | ``scan_executor``    | Выделенный пул потоков для           |
+        |                      | блокирующих операций сканирования.   |
+        |                      | Если ``None``, используется          |
+        |                      | дефолтный пул потоков.               |
+        +----------------------+--------------------------------------+
+        | ``document_cache``   | Кэш метаданных документов. Если      |
+        |                      | ``None``, используется прямое        |
+        |                      | обращение к БД через ``ITextIndexer``.|
+        +----------------------+--------------------------------------+
+        | ``process_runner``   | Приоритетный исполнитель             |
+        |                      | subprocess-задач (``IProcessTaskRunner``).|
+        |                      | Если задан, извлечение текста        |
+        |                      | выполняется через                    |
+        |                      | ``process_runner.run(pdf_worker, ...)``.|
+        |                      | Если ``None`` — fallback на          |
+        |                      | потоковый путь.                      |
+        +----------------------+--------------------------------------+
+        | ``pdf_worker``       | Picklable-функция извлечения текста  |
+        |                      | одного PDF. Передаётся как           |
+        |                      | ``Callable`` без импорта             |
+        |                      | ``subprocess_tasks`` в application.  |
+        |                      | Обязателен при заданном              |
+        |                      | ``process_runner``.                  |
+        +----------------------+--------------------------------------+
         """
         self._db = db
         self._scanner = scanner
@@ -438,8 +521,8 @@ class ScanPipeline:
         )
         self._scan_executor = scan_executor
         self._document_cache = document_cache
-        self._extract_executor = extract_executor
-        self._executor_broken = False
+        self._process_runner = process_runner
+        self._pdf_worker = pdf_worker
 
     # ------------------------------------------------------------------
     # Вспомогательные методы
@@ -1123,29 +1206,27 @@ class ScanPipeline:
         +----+----------------------------------------------------+
         | 5  | Извлечение текста через ``run_with_timeout``       |
         |    | с дескриптором ``scan.extract``:                   |
-        |    | a. ``ProcessPoolExecutor`` если доступен и не      |
-        |    |    сломан.                                         |
-        |    | b. Иначе — потоковый fallback.                     |
+        |    | a. Приоритет — ``process_runner.run(pdf_worker)``  |
+        |    |    если оба заданы (Фаза 4).                       |
+        |    | b. Иначе — потоковый fallback:                     |
+        |    |    ``indexer.prepare_document_queries`` в          |
+        |    |    ``scan_executor``.                              |
         +----+----------------------------------------------------+
         | 6  | При ``TimeoutError``:                              |
         |    | a. ``_tracker.record_stuck_process()``.            |
-        |    | b. Если ``stuck >= _max_extract_workers`` →        |
-        |    |    ``_executor_broken = True``.                    |
-        |    | c. ``_tracker.record_extract_result(0, 1, ...)``.  |
-        |    | d. ``task_done()`` и ``continue``.                 |
+        |    | b. ``_tracker.record_extract_result(0, 1, ...)``.  |
+        |    | c. ``task_done()`` и ``continue``.                 |
         +----+----------------------------------------------------+
-        | 7  | При ``BrokenProcessPool`` → fallback на потоки.    |
+        | 7  | При успехе — добавление запросов в буфер.          |
         +----+----------------------------------------------------+
-        | 8  | При успехе — добавление запросов в буфер.          |
+        | 8  | При ошибке — обновление счётчика и публикация.     |
         +----+----------------------------------------------------+
-        | 9  | При ошибке — обновление счётчика и публикация.     |
-        +----+----------------------------------------------------+
-        | 10 | При заполнении буфера до ``SCAN_COMMIT_INTERVAL``  |
+        | 9  | При заполнении буфера до ``SCAN_COMMIT_INTERVAL``  |
         |    | — вызов ``flush_buffer()``.                        |
         +----+----------------------------------------------------+
-        | 11 | Троттлинг публикации прогресса.                    |
+        | 10 | Троттлинг публикации прогресса.                    |
         +----+----------------------------------------------------+
-        | 12 | При завершении (сентинел/отмена) — запись          |
+        | 11 | При завершении (сентинел/отмена) — запись          |
         |    | остатка буфера только если ``_cancel_event``       |
         |    | не установлен.                                     |
         +----+----------------------------------------------------+
@@ -1185,18 +1266,22 @@ class ScanPipeline:
             # с таймаутом
             queries: list[tuple[str, tuple]] | None = None
             try:
-                loop = asyncio.get_running_loop()
-                if self._extract_executor is not None and not self._executor_broken:
+                if self._process_runner is not None and self._pdf_worker is not None:
+                    # Приоритетный путь (Фаза 4): извлечение в subprocess
+                    # через IProcessTaskRunner. Worker — picklable-функция
+                    # уровня модуля (передаётся как pdf_worker из
+                    # composition root). Аргументы соответствуют сигнатуре
+                    # extract_document_queries в subprocess_tasks.
                     queries = await run_with_timeout(
-                        loop.run_in_executor(
-                            self._extract_executor,
-                            extract_document_queries,
+                        self._process_runner.run(
+                            self._pdf_worker,
                             task.abs_file_path,
                             task.doc_id,
                             task.relative_path,
                             task.file_hash,
                             task.file_size,
                             task.last_modified,
+                            timeout=config.OPERATION_TIMEOUTS["scan.extract"],
                         ),
                         operation="scan.extract",
                         event_bus=self._event_bus,
@@ -1204,6 +1289,11 @@ class ScanPipeline:
                         recovery_action="Файл помечен как ошибочный.",
                     )
                 else:
+                    # Потоковый fallback: prepare_document_queries
+                    # в scan_executor. Используется, когда
+                    # process_runner или pdf_worker не заданы
+                    # (тесты, edge-сценарии). В production lifespan
+                    # всегда передаёт оба.
                     queries = await run_with_timeout(
                         run_blocking_in_executor(
                             self._scan_executor,
@@ -1222,26 +1312,9 @@ class ScanPipeline:
                     )
             except TimeoutError:
                 self._tracker.record_stuck_process()
-                if self._tracker.get_stuck_processes_count() >= self._max_extract_workers:
-                    self._executor_broken = True
                 self._tracker.record_extract_result(0, 1, task.relative_path)
                 self._extract_queue.task_done()
                 continue
-            except BrokenProcessPool:
-                self._executor_broken = True
-                try:
-                    queries = await run_blocking_in_executor(
-                        self._scan_executor,
-                        self._indexer.prepare_document_queries,
-                        task.doc_id,
-                        task.relative_path,
-                        task.file_hash,
-                        task.file_size,
-                        task.last_modified,
-                        task.abs_file_path,
-                    )
-                except Exception:
-                    queries = None
             except Exception:
                 queries = None
 

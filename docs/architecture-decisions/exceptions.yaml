@@ -64,7 +64,7 @@ root_packages:
 #   4. subprocess-tasks-isolation — composition root для subprocess-задач
 #                                   доступен только из dds_web.lifespan.
 #   5. subprocess-tasks-shallow   — subprocess_tasks не тянет stateful-объекты
-#                                   infrastructure и domain-абстракции.
+#                                   infrastructure (event_bus, БД, runner).
 #
 # Обоснование выбора forbidden-контрактов вместо layers-контрактов:
 # infrastructure импортирует отдельные shared-helper'ы из application
@@ -93,7 +93,7 @@ contracts:
       - dds_web
 
 
-    # -------------------------------------------------------------------
+  # -------------------------------------------------------------------
   # Contract 2: application-isolation
   #
   # Application оркестрирует домен и не знает о конкретных
@@ -103,15 +103,10 @@ contracts:
   # Запрет на dds_core.infrastructure — ключевой для Фазы 5
   # (DocumentIndexPlan): SQL-строки не должны протекать в application.
   #
-  # Временное исключение (устраняется в Фазе 5):
-  #   dds_core.application.extract_worker импортирует
-  #   dds_core.infrastructure.pymupdf_text_extractor. Это связано
-  #   с требованием pickle-совместимости для ProcessPoolExecutor:
-  #   entry point для subprocess не может получить экстрактор
-  #   извне, поэтому создаёт его локально. В Фазе 5 extract_worker
-  #   удаляется, его функции переносятся в
-  #   dds_core.subprocess_tasks.pdf_workers (composition root,
-  #   где infrastructure разрешён).
+  # Временное исключение для extract_worker, действовавшее в фазах 0–3,
+  # удалено в Фазе 4: функция extract_document_queries перенесена в
+  # dds_core.subprocess_tasks.pdf_workers (composition root, где
+  # infrastructure разрешён), а application/extract_worker.py удалён.
   # -------------------------------------------------------------------
   - name: application-isolation
     description: "Application layer isolation"
@@ -122,9 +117,6 @@ contracts:
       - dds_core.infrastructure
       - dds_core.subprocess_tasks
       - dds_web
-    ignore_imports:
-      - >-
-          dds_core.application.extract_worker -> dds_core.infrastructure.pymupdf_text_extractor
 
 
   # -------------------------------------------------------------------
@@ -157,64 +149,76 @@ contracts:
   #
   # Пакет легально импортирует application и infrastructure: worker'ы
   # создают PyMuPDFTextExtractor локально в дочернем процессе и
-  # вызывают application-логику (build_index_plan). Это единственное
-  # место в проекте, где такое сочетание разрешено.
+  # вызывают application-логику (build_document_queries в Фазе 4,
+  # build_index_plan в Фазе 5). Это единственное место в проекте,
+  # где такое сочетание разрешено.
   #
   # Единственная точка доступа — dds_web.lifespan (composition root
-  # основного процесса). Исключение зафиксировано в
-  # ignore_imports и в exception_lifecycle (см. ниже).
+  # основного процесса). Исключение зафиксировано в ignore_imports
+  # и в exception_lifecycle (см. ниже).
   #
   # Любое расширение allow-list — через ADR с обоснованием.
   # -------------------------------------------------------------------
-  # - name: subprocess-tasks-isolation
-  #   description: "Subprocess tasks isolation"
-  #   type: forbidden
-  #   source_modules:
-  #     - dds_core.domain
-  #     - dds_core.application
-  #     - dds_core.infrastructure
-  #     - dds_web
-  #   forbidden_modules:
-  #     - dds_core.subprocess_tasks
-  #   ignore_imports:
-  #     # Composition root: единственная точка доступа к subprocess-
-  #     # worker'ам. Обоснование — в exception_lifecycle ниже и в ADR-004.
-  #     - "dds_web.lifespan -> dds_core.subprocess_tasks.pdf_workers"
+  - name: subprocess-tasks-isolation
+    description: "Subprocess tasks isolation"
+    type: forbidden
+    source_modules:
+      - dds_core.domain
+      - dds_core.application
+      - dds_core.infrastructure
+      - dds_web
+    forbidden_modules:
+      - dds_core.subprocess_tasks
+    ignore_imports:
+      # Composition root: единственная точка доступа к subprocess-
+      # worker'ам. Обоснование — в exception_lifecycle ниже и в ADR-004.
+      - "dds_web.lifespan -> dds_core.subprocess_tasks.pdf_workers"
 
 
   # -------------------------------------------------------------------
   # Contract 5: subprocess-tasks-shallow
   #
-  # subprocess_tasks — узкий пакет. Запрет на импорт stateful-объектов
-  # infrastructure (event_bus, sqlite_adapter, сам runner) и
-  # domain-абстракций (events, interfaces, config).
+  # subprocess_tasks — узкий пакет. Запрет на импорт **stateful-объектов**
+  # infrastructure и presentation layer:
   #
-  # Обоснование: forkserver-контекст изолирует состояние основного
-  # процесса (см. ADR-004, раздел «Ограничения forkserver»).
-  # Попытка передать event_bus или открытую БД в worker приведёт
-  # к неявным ошибкам или утечкам. Пакет должен оставаться простым:
-  # принимает параметры, создаёт зависимости локально.
+  #   - dds_web                        — presentation layer.
+  #   - dds_core.infrastructure.event_bus
+  #                                    — очередь событий + ссылка на
+  #                                      event loop родителя.
+  #   - dds_core.infrastructure.sqlite_adapter
+  #                                    — открытые соединения с БД.
+  #   - dds_core.infrastructure.process_task_runner
+  #                                    — circular dependency: worker
+  #                                      вызывается из runner, импорт
+  #                                      runner в worker создал бы цикл.
   #
-  # Разрешено (не перечислено в forbidden):
-  #   - dds_core.domain.models      (type hints: WordIndex, WordEntry)
-  #   - dds_core.domain.index_plan  (type hints: DocumentIndexPlan)
-  #   - dds_core.application.*      (build_index_plan)
+  # Доменные типы (models), Protocol-ы (interfaces), dataclass-события
+  # (events), константы (config), функции нормализации
+  # (text_normalization) — **не запрещены**. Они не несут состояния
+  # и безопасны при передаче в forkserver-процесс. Более того, они
+  # попадают в worker **транзитивно** через application-модуль
+  # (query_builder) и infrastructure-модуль (pymupdf_text_extractor),
+  # которые разрешены контрактом 4. Запрет этих доменных модулей
+  # потребовал бы исключать весь application-слой — противоречие
+  # цели контракта.
+  #
+  # Разрешение на импорт application-логики:
+  #   - dds_core.application.query_builder.build_document_queries
+  #     (в Фазе 5 заменится на build_index_plan).
+  # Разрешение на импорт infrastructure:
   #   - dds_core.infrastructure.pymupdf_text_extractor
-  #     (создание экстрактора в worker'е)
+  #     (создание экстрактора в worker'е).
   # -------------------------------------------------------------------
-  # - name: subprocess-tasks-shallow
-  #   description: "Subprocess tasks shallow imports"
-  #   type: forbidden
-  #   source_modules:
-  #     - dds_core.subprocess_tasks
-  #   forbidden_modules:
-  #     - dds_web
-  #     - dds_core.domain.events
-  #     - dds_core.domain.interfaces
-  #     - dds_core.domain.config
-  #     - dds_core.infrastructure.event_bus
-  #     - dds_core.infrastructure.sqlite_adapter
-  #     - dds_core.infrastructure.process_task_runner
+  - name: subprocess-tasks-shallow
+    description: "Subprocess tasks shallow imports"
+    type: forbidden
+    source_modules:
+      - dds_core.subprocess_tasks
+    forbidden_modules:
+      - dds_web
+      - dds_core.infrastructure.event_bus
+      - dds_core.infrastructure.sqlite_adapter
+      - dds_core.infrastructure.process_task_runner
 
 
 # =====================================================================
@@ -237,16 +241,25 @@ contracts:
 # =====================================================================
 exception_lifecycle:
 
-  # Временное исключение: extract_worker импортирует infrastructure.
+  # -------------------------------------------------------------------
+  # Постоянное ослабление: composition root импортирует pdf_workers.
   #
-  # Устраняется в Фазе 5: extract_worker.py удаляется, его функции
-  # переносятся в dds_core.subprocess_tasks.pdf_workers (composition
-  # root, где infrastructure разрешён). См. ADR-005.
-  - contract: application-isolation
-    import: "dds_core.application.extract_worker -> dds_core.infrastructure.pymupdf_text_extractor"
-    phase_removed_by: 5
+  # dds_web.lifespan — единственная точка, где создаётся
+  # ProcessTaskRunner и передаётся pdf_worker в ScanOrchestrator.
+  # Импорт worker-функции из dds_core.subprocess_tasks.pdf_workers
+  # неизбежен: сам worker должен быть видим родительскому процессу,
+  # чтобы ProcessTaskRunner мог его pickle-сериализовать и передать
+  # в дочерний процесс.
+  #
+  # Это архитектурное решение composition root, а не временная мера.
+  # Расширение allow-list (например, добавление ещё одного модуля
+  # верхнего уровня) требует ADR с обоснованием. См. ADR-004.
+  # -------------------------------------------------------------------
+  - contract: subprocess-tasks-isolation
+    import: "dds_web.lifespan -> dds_core.subprocess_tasks.pdf_workers"
+    permanent: true
     rationale: >
-      Pickle-совместимость для ProcessPoolExecutor: entry point
-      subprocess-задачи не может получить экстрактор извне, поэтому
-      создаёт его локально. В Фазе 5 функция переносится в
-      dds_core.subprocess_tasks.pdf_workers (composition root).
+      Composition root: единственная точка доступа к subprocess-worker'ам.
+      ProcessTaskRunner создаётся здесь и получает pdf_worker для
+      pickle-сериализации в дочерний процесс. Обоснование и альтернативы —
+      в ADR-004.
