@@ -58,9 +58,8 @@
 # См. также:
 #   - docs/architecture-decisions/README.md (правила ADR)
 #   - ADR-002 (Remove Service Locator)  — записи Фазы 2
-#   - ADR-003 (Domain Text Normalization) — записи Фазы 3
-#   - ADR-004 (ProcessTaskRunner) — запись Фазы 4
-#   - ADR-005 (DocumentIndexPlan, запланирован) — записи Фазы 5
+#   - ADR-005 (DocumentIndexPlan)       — записи Фазы 5
+#   - ADR-006 (Server-side Terms)       — записи Фазы 6
 #
 # =====================================================================
 # ПРАВИЛА ВЕДЕНИЯ ФАЙЛА:
@@ -89,90 +88,6 @@
 entries:
 
   # ===================================================================
-  # Фаза 3 — Domain cleanup (ADR-003).
-  #
-  # Правило нормализации текста перенесено в domain
-  # (``dds_core/domain/text_normalization.py``). Разбор поискового
-  # запроса и сборка FTS5 MATCH-выражения разделены на application
-  # (токенизатор) и infrastructure/fts5 (сборщик MATCH).
-  #
-  # Все записи — ``direct_removal``: внешние модули из
-  # ``dds_modules/`` не используют внутренние утилиты ядра
-  # (правило нормализации и сборщик запроса — часть ядра DDS).
-  # ===================================================================
-
-  - symbol: dds_core.application.text_normalizer.normalize_text
-    type: direct_removal
-    removed_in_phase: 3
-    module_users: []
-    note: >
-      Перенесено в dds_core.domain.text_normalization.normalize_text.
-      Замена — прямой импорт из domain-модуля.
-
-  - symbol: dds_core.application.text_normalizer.denormalize_text
-    type: direct_removal
-    removed_in_phase: 3
-    module_users: []
-    note: >
-      Перенесено в dds_core.domain.text_normalization.denormalize_text.
-      Замена — прямой импорт из domain-модуля.
-
-  - symbol: dds_core.application.text_normalizer.CYRILLIC_TO_LATIN_MAP
-    type: direct_removal
-    removed_in_phase: 3
-    module_users: []
-    note: >
-      Перенесено в dds_core.domain.text_normalization.CYRILLIC_TO_LATIN_MAP.
-
-  - symbol: dds_core.application.text_normalizer.LATIN_TO_CYRILLIC_MAP
-    type: direct_removal
-    removed_in_phase: 3
-    module_users: []
-    note: >
-      Перенесено в dds_core.domain.text_normalization.LATIN_TO_CYRILLIC_MAP.
-
-  - symbol: dds_core.application.search_query_normalizer.normalize_search_query
-    type: direct_removal
-    removed_in_phase: 3
-    module_users: []
-    note: >
-      Разделено на два модуля:
-      - dds_core.application.query_tokenizer.tokenize_search_query —
-        структурный разбор запроса в discriminated union токенов;
-      - dds_core.infrastructure.fts5.match_builder.normalize_search_query —
-        сборка FTS5 MATCH-выражения из токенов.
-      Замена для потребителей — прямой импорт из
-      dds_core.infrastructure.fts5.match_builder.
-
-  # ===================================================================
-  # Фаза 4 — ProcessTaskRunner (ADR-004).
-  #
-  # Функция ``extract_document_queries`` перенесена из
-  # ``dds_core/application/extract_worker.py`` в
-  # ``dds_core/subprocess_tasks/pdf_workers.py``. Файл
-  # ``extract_worker.py`` удалён.
-  #
-  # Причина переноса: worker для subprocess должен быть в composition
-  # root (``subprocess_tasks``), где разрешён импорт infrastructure
-  # (создание PyMuPDFTextExtractor в дочернем процессе). Это
-  # устраняет временное исключение ``application-isolation``,
-  # действовавшее в фазах 0–3.
-  #
-  # Внешние модули из ``dds_modules/`` не используют внутреннюю
-  # функцию ядра — тип ``direct_removal`` с пустым ``module_users``.
-  # ===================================================================
-
-  - symbol: dds_core.application.extract_worker.extract_document_queries
-    type: direct_removal
-    removed_in_phase: 4
-    module_users: []
-    note: >
-      Перенесено в dds_core.subprocess_tasks.pdf_workers.extract_document_queries.
-      Вызывается через pdf_worker в composition root (dds_web.lifespan).
-      См. ADR-004 (ProcessTaskRunner).
-
-
-  # ===================================================================
   # Фаза 5 — DocumentIndexPlan (ADR-005).
   #
   # Устранение SQL-строк из application-слоя. Формирование SQL
@@ -183,8 +98,9 @@ entries:
   # ``dds_modules/`` не используют внутренние символы ядра
   # (SQL-хелперы и методы индексатора — часть ядра DDS).
   #
-  # ``extract_document_queries`` (запись Фазы 4) удалена: заменена
-  # на ``build_index_plan_in_subprocess``.
+  # Примечание (Фаза 6): записи Фаз 3 и 4 удалены из файла
+  # в соответствии с grace-периодом (2 фазы). См. ADR-003
+  # и ADR-004.
   # ===================================================================
 
   - symbol: dds_core.application.query_builder.build_document_queries

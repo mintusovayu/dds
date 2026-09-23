@@ -115,8 +115,8 @@ SQLite.
   FTS5 MATCH. Вместо этого запрос строится напрямую по таблице
   ``documents`` с учётом всех фильтров. Результаты содержат один
   ``SearchResult`` на документ с одной «виртуальной» страницей
-  (``page_number=0``, ``snippet=""``). Клиент отобразит такие
-  документы без раскрытия.
+  (``page_number=0``, ``snippet=""``, ``terms=()``). Клиент
+  отобразит такие документы без раскрытия.
 - Метод ``count`` при пустом запросе также считает документы,
   а не страницы.
 
@@ -133,6 +133,16 @@ SQLite.
 Сниппеты формируются из ``normalized_text`` (индекс 3) и
 денормализуются функцией
 :func:`~dds_core.domain.text_normalization.denormalize_text`.
+
+Термины подсветки (Фаза 6, ADR-006):
+
+При формировании каждого :class:`PageHit` сервер извлекает
+уникальные термины подсветки из **денормализованного** сниппета
+через :func:`~dds_core.application.snippet_terms_extractor.extract_terms_from_snippet`
+и сохраняет их в поле ``PageHit.terms``. Клиент получает готовый
+список терминов через API и не парсит сниппеты самостоятельно —
+это устраняет протечку FTS5-специфики (формат маркеров) в
+presentation layer.
 
 Принципы:
 - Модуль реализует интерфейс доменного слоя (инверсия зависимостей).
@@ -151,6 +161,7 @@ import re
 import sqlite3
 
 from ..application.metadata_filter_query_builder import MetadataFilterQueryBuilder
+from ..application.snippet_terms_extractor import extract_terms_from_snippet
 from ..domain import config
 from ..domain.interfaces import IDatabase
 from ..domain.models import PageHit, SearchFilters, SearchResult
@@ -233,6 +244,12 @@ class FTS5SearchBackend:
     (см. research-шаг 3.1 плана v5.0) не применима: FTS5 запрещает
     ``bm25()`` в подзапросах с агрегацией.
 
+    Термины подсветки (Фаза 6):
+    При формировании :class:`PageHit` сервер извлекает уникальные
+    термины из денормализованного сниппета и сохраняет их в поле
+    ``PageHit.terms``. Это устраняет парсинг сниппетов на клиенте
+    (см. ADR-006).
+
     Пример использования::
 
         backend = FTS5SearchBackend(db_adapter)
@@ -284,6 +301,12 @@ class FTS5SearchBackend:
         Порядок документов: по возрастанию ``best_rank``, затем
         по ``doc_id``. Страницы внутри документа — по
         ``page_number``.
+
+        Термины подсветки (Фаза 6):
+        Для каждой страницы формируется :class:`PageHit` с полем
+        ``terms`` — кортеж уникальных терминов, извлечённых из
+        денормализованного сниппета. Клиент использует готовые
+        термины без парсинга (см. ADR-006).
 
         Для пустого запроса вызывается ``_search_documents_only``.
 
@@ -413,10 +436,20 @@ class FTS5SearchBackend:
                 continue
             seen_pages[doc_id].add(page_number)
 
+            # Денормализация сниппета: клиент получает читаемый
+            # кириллический текст (не нормализованный).
+            denormalized_snippet = denormalize_text(snippet_raw)
+
+            # Термины подсветки извлекаются из денормализованного
+            # сниппета — в той же форме, что отображается
+            # пользователю в подсказках (см. ADR-006).
+            page_terms = extract_terms_from_snippet(denormalized_snippet)
+
             pages_by_doc[doc_id].append(
                 PageHit(
                     page_number=page_number,
-                    snippet=denormalize_text(snippet_raw),
+                    snippet=denormalized_snippet,
+                    terms=page_terms,
                 )
             )
 
@@ -509,10 +542,10 @@ class FTS5SearchBackend:
         документа порождает несколько строк в VIEW).
 
         Каждый результат содержит одну «виртуальную» страницу
-        (``page_number=0``, пустой ``snippet``), чтобы структура
-        :class:`SearchResult` оставалась единой для обоих режимов.
-        Клиент отобразит такие документы без кнопки раскрытия
-        (``pages.length == 1``).
+        (``page_number=0``, пустой ``snippet``, пустой ``terms``),
+        чтобы структура :class:`SearchResult` оставалась единой
+        для обоих режимов. Клиент отобразит такие документы
+        без кнопки раскрытия (``pages.length == 1``).
 
         Args:
             filters: Фильтры поиска.

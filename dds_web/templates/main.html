@@ -53,7 +53,7 @@
 | | несоответствующих. |
 +----------------------------------+----------------------------------+
 | Добавлен блок | Блок для контейнера панели |
-| ``{% block settings_container %}``| настроек. Используется |
+| ``settings_container`` | настроек. Используется |
 | | ``SettingsModule`` для |
 | | размещения модального окна. |
 +----------------------------------+----------------------------------+
@@ -113,6 +113,14 @@
 | | для каждой страницы. |
 +----------------------------------+----------------------------------+
 
+Cache-busting статических ресурсов (Фаза 6, ADR-006):
+Все ``script src="/static/js/*.js">`` подключаются с query-параметром
+вида ``?v=build_hash>``. Значение ``build_hash`` доступно
+автоматически через ``templates.env.globals`` (см. ``dds_web/pages.py``) —
+явная передача в контекст не требуется. При изменении содержимого
+ассета или при пересборке через ``DDS_BUILD_HASH`` браузер загружает
+свежую версию вместо кешированной.
+
 Компоновка (референс — VS Code):
 
 +------+-----------------+----------------------------------------+
@@ -149,6 +157,9 @@
 +---------------------+------------------------------------------+
 | ``user_role`` | Роль пользователя (строка: |
 | | ``"admin"`` или ``"user"``). |
++---------------------+------------------------------------------+
+| ``build_hash`` | Доступен автоматически через |
+| | ``templates.env.globals``. |
 +---------------------+------------------------------------------+
 
 Вкладки в центральной области:
@@ -230,6 +241,8 @@
 Jinja2-выражения внутри JavaScript.
 - Для диагностики автодополнения подключён ``debug_utils.js``
 и установлен ``window.DEBUG_FILTERS = false`` (отладка отключена).
+- Cache-busting: все ``script>`` подключаются с query-параметром
+вида ``?v=build_hash>``.
 
 Подключаемые скрипты (в порядке загрузки):
 
@@ -455,6 +468,7 @@ Jinja2-выражения внутри JavaScript.
 
 {# ==================================================================
 JavaScript: подключение модульных скриптов
+Все скрипты подключаются с ?v={{ build_hash }} для cache-busting.
 ================================================================== #}
 {% block scripts %}
 <!-- Установка флага отладки: отключено в production -->
@@ -463,15 +477,15 @@ JavaScript: подключение модульных скриптов
 </script>
 
 <!-- Подключение модульных скриптов в порядке зависимости -->
-<script src="/static/js/debug_utils.js"></script>
-<script src="/static/js/ui_state_manager.js"></script>
-<script src="/static/js/sse.js"></script>
-<script src="/static/js/document.js"></script>
-<script src="/static/js/autocomplete.js"></script>
-<script src="/static/js/filter_coordinator.js"></script>
-<script src="/static/js/search.js"></script>
-<script src="/static/js/settings.js"></script>
-<script src="/static/js/app.js"></script>
+<script src="/static/js/debug_utils.js?v={{ build_hash }}"></script>
+<script src="/static/js/ui_state_manager.js?v={{ build_hash }}"></script>
+<script src="/static/js/sse.js?v={{ build_hash }}"></script>
+<script src="/static/js/document.js?v={{ build_hash }}"></script>
+<script src="/static/js/autocomplete.js?v={{ build_hash }}"></script>
+<script src="/static/js/filter_coordinator.js?v={{ build_hash }}"></script>
+<script src="/static/js/search.js?v={{ build_hash }}"></script>
+<script src="/static/js/settings.js?v={{ build_hash }}"></script>
+<script src="/static/js/app.js?v={{ build_hash }}"></script>
 
 <!-- Данные для инициализации модулей -->
 <div id="main-init-data" data-scan-status="{{ scan_status.status.value if scan_status else 'idle' }}"
