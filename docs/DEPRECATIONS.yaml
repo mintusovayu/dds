@@ -170,3 +170,57 @@ entries:
       Перенесено в dds_core.subprocess_tasks.pdf_workers.extract_document_queries.
       Вызывается через pdf_worker в composition root (dds_web.lifespan).
       См. ADR-004 (ProcessTaskRunner).
+
+
+  # ===================================================================
+  # Фаза 5 — DocumentIndexPlan (ADR-005).
+  #
+  # Устранение SQL-строк из application-слоя. Формирование SQL
+  # перенесено в infrastructure (``SqliteIndexWriter``); application
+  # работает с доменной моделью ``DocumentIndexPlan``.
+  #
+  # Все записи — ``direct_removal``: внешние модули из
+  # ``dds_modules/`` не используют внутренние символы ядра
+  # (SQL-хелперы и методы индексатора — часть ядра DDS).
+  #
+  # ``extract_document_queries`` (запись Фазы 4) удалена: заменена
+  # на ``build_index_plan_in_subprocess``.
+  # ===================================================================
+
+  - symbol: dds_core.application.query_builder.build_document_queries
+    type: direct_removal
+    removed_in_phase: 5
+    module_users: []
+    note: >
+      Заменено на dds_core.application.index_plan_builder.build_index_plan
+      (формирование доменной модели DocumentIndexPlan) и
+      dds_core.infrastructure.sqlite_index_writer.SqliteIndexWriter
+      (формирование SQL и запись). См. ADR-005 (DocumentIndexPlan).
+
+  - symbol: dds_core.application.indexer.TextIndexer.prepare_document_queries
+    type: direct_removal
+    removed_in_phase: 5
+    module_users: []
+    note: >
+      Заменено на dds_core.application.indexer.TextIndexer.prepare_index_plan
+      (возвращает DocumentIndexPlan вместо list[tuple[str, tuple]]).
+      См. ADR-005.
+
+  - symbol: dds_core.application.indexer.TextIndexer.write_documents_batch
+    type: direct_removal
+    removed_in_phase: 5
+    module_users: []
+    note: >
+      Заменено на dds_core.application.indexer.TextIndexer.write_index_plans
+      (принимает list[DocumentIndexPlan], делегирует в IIndexWriter).
+      См. ADR-005.
+
+  - symbol: dds_core.subprocess_tasks.pdf_workers.extract_document_queries
+    type: direct_removal
+    removed_in_phase: 5
+    module_users: []
+    note: >
+      Заменено на dds_core.subprocess_tasks.pdf_workers.build_index_plan_in_subprocess
+      (возвращает DocumentIndexPlan вместо list[tuple[str, tuple]]).
+      Порядок аргументов изменён: abs_file_path — последний, для
+      согласованности с build_index_plan. См. ADR-005.

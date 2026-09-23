@@ -203,8 +203,8 @@ contracts:
   # цели контракта.
   #
   # Разрешение на импорт application-логики:
-  #   - dds_core.application.query_builder.build_document_queries
-  #     (в Фазе 5 заменится на build_index_plan).
+  #   - dds_core.application.index_plan_builder.build_index_plan
+  #     (Фаза 5, ADR-005; заменил query_builder.build_document_queries).
   # Разрешение на импорт infrastructure:
   #   - dds_core.infrastructure.pymupdf_text_extractor
   #     (создание экстрактора в worker'е).
@@ -245,21 +245,27 @@ exception_lifecycle:
   # Постоянное ослабление: composition root импортирует pdf_workers.
   #
   # dds_web.lifespan — единственная точка, где создаётся
-  # ProcessTaskRunner и передаётся pdf_worker в ScanOrchestrator.
+  # ProcessTaskRunner и передаётся index_plan_worker в ScanOrchestrator.
   # Импорт worker-функции из dds_core.subprocess_tasks.pdf_workers
   # неизбежен: сам worker должен быть видим родительскому процессу,
   # чтобы ProcessTaskRunner мог его pickle-сериализовать и передать
   # в дочерний процесс.
   #
+  # Функция build_index_plan_in_subprocess (Фаза 5, ADR-005) заменила
+  # extract_document_queries: возвращает DocumentIndexPlan вместо
+  # list[tuple[str, tuple]]. Имя модуля (pdf_workers) не изменилось.
+  #
   # Это архитектурное решение composition root, а не временная мера.
   # Расширение allow-list (например, добавление ещё одного модуля
-  # верхнего уровня) требует ADR с обоснованием. См. ADR-004.
+  # верхнего уровня) требует ADR с обоснованием. См. ADR-004 и
+  # ADR-005.
   # -------------------------------------------------------------------
   - contract: subprocess-tasks-isolation
     import: "dds_web.lifespan -> dds_core.subprocess_tasks.pdf_workers"
     permanent: true
     rationale: >
       Composition root: единственная точка доступа к subprocess-worker'ам.
-      ProcessTaskRunner создаётся здесь и получает pdf_worker для
-      pickle-сериализации в дочерний процесс. Обоснование и альтернативы —
-      в ADR-004.
+      ProcessTaskRunner создаётся здесь и получает index_plan_worker
+      (build_index_plan_in_subprocess) для pickle-сериализации в
+      дочерний процесс. Обоснование и альтернативы — в ADR-004;
+      переход к DocumentIndexPlan — в ADR-005.

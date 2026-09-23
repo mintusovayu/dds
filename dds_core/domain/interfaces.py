@@ -119,6 +119,7 @@ from collections.abc import Callable
 from typing import Any, Literal, Protocol, TypeVar, runtime_checkable
 
 from .events import Event
+from .index_plan import DocumentIndexPlan
 from .models import (
     DocumentInfo,
     ModuleConfig,
@@ -1729,8 +1730,26 @@ class ITextIndexer(Protocol):
     Абстракция индексатора текстового слоя.
 
     Реализуется классом ``TextIndexer`` в application layer.
-    Отвечает за подготовку SQL-запросов для индексирования
-    документов, запись батчей и поиск документов по хешу и пути.
+    Отвечает за подготовку доменного плана индексации
+    (``DocumentIndexPlan``), запись планов через ``IIndexWriter``
+    и поиск документов по хешу и пути через ``IDatabase``.
+
+    Разделение записи и чтения (Фаза 5, ADR-005):
+
+    До Фазы 5 ``ITextIndexer`` описывал методы, возвращавшие
+    SQL-запросы (``prepare_document_queries``) и принимавшие их
+    для записи (``write_documents_batch``). Это создавало протечку
+    SQL-специфики в application-слой.
+
+    В Фазе 5 контракт разделён:
+
+    - **Запись** делегируется в ``IIndexWriter`` (реализация —
+      ``SqliteIndexWriter`` в infrastructure). ``ITextIndexer``
+      принимает ``list[DocumentIndexPlan]`` и возвращает счётчики
+      ``(success, failed)`` — никаких SQL-строк.
+    - **Чтение** (поиск по хешу/пути, чтение кэшированных
+      метаданных) остаётся в ``ITextIndexer`` через ``IDatabase``.
+      Рефакторинг read-side отложен на Фазу 8.
 
     Расширение ``get_document_metadata`` (скорректированный план,
     шаг 4.4 рефакторинга v5.0):
@@ -1741,16 +1760,18 @@ class ITextIndexer(Protocol):
     cached_size, cached_mtime). Причина: в ветке fallback метода
     ``ScanPipeline._hash_single_file`` (когда ``DocumentCache``
     недоступен) ``cached[1]`` (file_hash) всегда была пустой
-    строкой — это скрывало реальный баг и нарушало инвариант
-    кортежа. Расширение сигнатуры позволяет потребителю получать
-    ``file_hash`` из БД напрямую, без дополнительных
-    SELECT-запросов.
+    строкой — реализация собирала кортеж вручную как
+    ``(doc_id_from_path or "", "", cached_meta[0], cached_meta[1])``,
+    что скрывало реальный баг и нарушало инвариант 4-элементного
+    кортежа. Расширение сигнатуры позволяет получить все четыре
+    поля одним SELECT-запросом, без дополнительного обращения
+    к БД через ``get_document_by_path``.
 
     Реализации:
         ``dds_core/application/indexer.py`` → ``TextIndexer``
     """
 
-    def prepare_document_queries(
+    def prepare_index_plan(
         self,
         doc_id: str,
         file_path: str,
@@ -1758,12 +1779,13 @@ class ITextIndexer(Protocol):
         file_size: int,
         last_modified: str,
         abs_file_path: str,
-    ) -> list[tuple[str, tuple]] | None:
+    ) -> DocumentIndexPlan | None:
         """
-        Подготавливает SQL-запросы для индексирования документа.
+        Подготавливает доменный план индексации документа.
 
-        Открывает документ, извлекает текст всех страниц и формирует
-        список запросов. Не выполняет запись в БД.
+        Открывает документ через ``ITextExtractor``, извлекает
+        текст всех страниц, применяет нормализацию и формирует
+        ``DocumentIndexPlan``. Не выполняет записи в БД.
 
         Args:
             doc_id: Идентификатор документа.
@@ -1774,21 +1796,24 @@ class ITextIndexer(Protocol):
             abs_file_path: Абсолютный путь к файлу документа.
 
         Returns:
-            Список кортежей ``(SQL-запрос, параметры)``,
-            либо ``None`` при ошибке.
+            ``DocumentIndexPlan``, либо ``None`` при ошибке.
         """
         ...
 
-    def write_documents_batch(
+    def write_index_plans(
         self,
-        document_batches: list[list[tuple[str, tuple]]],
+        plans: list[DocumentIndexPlan],
     ) -> tuple[int, int]:
         """
-        Записывает батч подготовленных документов в БД.
+        Записывает батч планов индексации через ``IIndexWriter``.
+
+        Делегирует запись в ``IIndexWriter.write_plans_batch``,
+        который выполняет запись с SAVEPOINT-изоляцией и батчевыми
+        COMMIT. Возвращает счётчики успешных и ошибочных планов.
 
         Args:
-            document_batches: Список документов, каждый из которых
-                представлен списком запросов ``(запрос, параметры)``.
+            plans: Список планов индексации. Пустой список —
+                допустимый вход; возвращается ``(0, 0)``.
 
         Returns:
             Кортеж ``(успешных документов, ошибочных документов)``.
@@ -1798,6 +1823,8 @@ class ITextIndexer(Protocol):
     def remove_document(self, doc_id: str) -> None:
         """
         Удаляет документ из индекса.
+
+        Делегирует удаление в ``IIndexWriter.remove_document``.
 
         Args:
             doc_id: Идентификатор документа для удаления.
@@ -1836,13 +1863,13 @@ class ITextIndexer(Protocol):
         Возвращает сохранённые метаданные документа для ленивого
         хеширования.
 
-        Расширенная сигнатура (скорректированный план, шаг 4.4
-        рефакторинга v5.0): возвращается 4-элементный кортеж
-        ``(doc_id, file_hash, cached_size, cached_mtime)`` вместо
-        прежнего ``(cached_size, cached_mtime)``. Это позволяет
-        вызывающему коду (``ScanPipeline._hash_single_file``)
-        получать ``doc_id`` и ``file_hash`` без дополнительных
-        запросов к БД.
+        Сигнатура 4-элементного кортежа (скорректированный план,
+        шаг 4.4 рефакторинга v5.0): ``(doc_id, file_hash,
+        cached_size, cached_mtime)``. Ранее возвращался 2-элементный
+        кортеж ``(cached_size, cached_mtime)``; ``doc_id`` и
+        ``file_hash`` собирались отдельными SELECT-запросами, что
+        скрывало баг (``file_hash`` всегда пустой) и увеличивало
+        число обращений к БД.
 
         Операции:
 
@@ -1852,17 +1879,10 @@ class ITextIndexer(Protocol):
         | 1 | ``SELECT doc_id, file_hash, cached_size,             |
         |   | cached_mtime FROM documents WHERE file_path = ?``.   |
         +---+-----------------------------------------------------+
-        | 2 | Если строка найдена — возврат кортежа из 4 полей.    |
+        | 2 | Если строка найдена — возврат 4-элементного кортежа. |
         +---+-----------------------------------------------------+
         | 3 | Иначе — возврат ``None``.                           |
         +---+-----------------------------------------------------+
-
-        Примечание:
-            Для документов, проиндексированных до применения
-            миграции версии 2, ``cached_size`` и ``cached_mtime``
-            содержат значения по умолчанию (0 и пустая строка).
-            Это приведёт к хешированию файла при первом
-            повторном сканировании после миграции.
 
         Args:
             file_path: Относительный путь к файлу документа

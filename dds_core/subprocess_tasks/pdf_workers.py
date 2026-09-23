@@ -27,16 +27,18 @@ event loop) не сериализуются через ``pickle``.
 Принципы
 --------
 
-- **Функции уровня модуля.** ``extract_document_queries`` должна быть
-  определена на уровне модуля (не как вложенная функция), чтобы
+- **Функции уровня модуля.** ``build_index_plan_in_subprocess`` должна
+  быть определена на уровне модуля (не как вложенная функция), чтобы
   сериализоваться через ``pickle``. Локальные функции и лямбды
   не picklable.
 - **Picklable-аргументы.** Все аргументы — примитивы (str, int) или
   стандартные структуры (list, dict). Открытые файлы, соединения,
   event loop, dataclass-со-ссылками не передаются.
-- **Picklable-результат.** Возвращаемое значение (список кортежей
-  ``(SQL, params)``) сериализуется через ``pickle`` без модификаций.
-  ``None`` при ошибке также pickle-совместим.
+- **Picklable-результат.** Возвращаемое значение
+  (``DocumentIndexPlan | None``) сериализуется через ``pickle`` без
+  модификаций — ``DocumentIndexPlan`` и ``PageRecord`` помечены
+  ``frozen=True``, ``pages`` — ``tuple``. ``None`` при ошибке
+  также pickle-совместим.
 - **Локальное создание зависимостей.** ``PyMuPDFTextExtractor``
   создаётся внутри функции, а не передаётся через аргумент.
 - **Обработка ошибок — не пробрасывать.** Worker не должен поднимать
@@ -47,58 +49,61 @@ event loop) не сериализуются через ``pickle``.
 Отличие от предыдущей реализации
 --------------------------------
 
-Ранее функция ``extract_document_queries`` жила в
-``dds_core/application/extract_worker.py``. Модуль импортировал
-``PyMuPDFTextExtractor`` из ``infrastructure``, что нарушало
-контракт ``application-isolation`` и требовало временного исключения
-в ``exceptions.yaml``:
+До Фазы 5 функция ``extract_document_queries`` возвращала список
+SQL-запросов (``list[tuple[str, tuple]]``), сформированных функцией
+``dds_core.application.query_builder.build_document_queries``. SQL
+формировался в application-слое, что нарушало слоистость: SQL —
+специфика конкретного бэкенда БД (SQLite FTS5).
 
-.. code-block:: yaml
+В Фазе 5 (ADR-005, DocumentIndexPlan) worker переименован и
+возвращает доменную модель ``DocumentIndexPlan``. SQL-строки
+формирует ``SqliteIndexWriter`` в infrastructure-слое.
 
-    ignore_imports:
-      - >-
-          dds_core.application.extract_worker -> dds_core.infrastructure.pymupdf_text_extractor
-
-В Фазе 4 функция перенесена в ``subprocess_tasks/pdf_workers.py``
-(composition root), а ``application/extract_worker.py`` удалён.
-Временное исключение из ``exceptions.yaml`` снято. Контракт
-``application-isolation`` снова чистый.
+Дополнительно (историческая справка): до Фазы 4 функция жила в
+``dds_core/application/extract_worker.py`` и импортировала
+``PyMuPDFTextExtractor`` из infrastructure, нарушая контракт
+``application-isolation``. Перенос в ``subprocess_tasks`` (Фаза 4)
+устранил это нарушение.
 
 Ссылки
 ------
 
 - ``docs/architecture-decisions/ADR-004-process-task-runner.md`` —
   обоснование process-per-task и forkserver-контекста.
+- ``docs/architecture-decisions/ADR-005-document-index-plan.md`` —
+  обоснование перехода к доменной модели плана индексации.
 - ``docs/architecture-decisions/exceptions.yaml`` — контракты
   ``subprocess-tasks-isolation`` и ``subprocess-tasks-shallow``.
 - ``dds_core/infrastructure/process_task_runner.py`` — вызывающий
   компонент.
-- ``dds_core/application/query_builder.py`` — ``build_document_queries``,
-  бизнес-логика извлечения текста и формирования SQL-запросов
-  (в Фазе 5 будет заменена на ``build_index_plan``).
+- ``dds_core/application/index_plan_builder.py`` — ``build_index_plan``,
+  бизнес-логика формирования плана.
+- ``dds_core/infrastructure/sqlite_index_writer.py`` — запись плана
+  в БД (в родительском процессе).
 """
 
 from __future__ import annotations
 
-from ..application.query_builder import build_document_queries
+from ..application.index_plan_builder import build_index_plan
+from ..domain.index_plan import DocumentIndexPlan
 from ..infrastructure.pymupdf_text_extractor import PyMuPDFTextExtractor
 
 
-def extract_document_queries(
-    abs_file_path: str,
+def build_index_plan_in_subprocess(
     doc_id: str,
-    relative_path: str,
+    file_path: str,
     file_hash: str,
     file_size: int,
     last_modified: str,
-) -> list[tuple[str, tuple]] | None:
-    """Извлекает текст документа в дочернем процессе.
+    abs_file_path: str,
+) -> DocumentIndexPlan | None:
+    """Строит план индексации документа в дочернем процессе.
 
     Функция уровня модуля — сериализуется через ``pickle`` и выполняется
     в изолированном процессе, созданном ``ProcessTaskRunner`` (контекст
     ``forkserver``). Локально создаёт ``PyMuPDFTextExtractor`` и вызывает
-    ``build_document_queries`` для формирования SQL-запросов
-    индексирования.
+    :func:`~dds_core.application.index_plan_builder.build_index_plan`
+    для формирования :class:`DocumentIndexPlan`.
 
     Операции:
 
@@ -108,10 +113,9 @@ def extract_document_queries(
     | 1  | Создание экземпляра ``PyMuPDFTextExtractor``       |
     |    | локально в дочернем процессе.                      |
     +----+----------------------------------------------------+
-    | 2  | Вызов ``build_document_queries`` с параметрами     |
-    |    | документа.                                         |
+    | 2  | Вызов ``build_index_plan`` с параметрами документа.|
     +----+----------------------------------------------------+
-    | 3  | Возврат списка SQL-запросов.                       |
+    | 3  | Возврат ``DocumentIndexPlan``.                     |
     +----+----------------------------------------------------+
     | 4  | При любом исключении — возврат ``None``.           |
     +----+----------------------------------------------------+
@@ -122,20 +126,19 @@ def extract_document_queries(
       ``OSError``, ``RuntimeError`` от PyMuPDF).
     - Извлечение текста страницы может упасть (``RuntimeError``
       при ошибке PyMuPDF в stderr).
-    - Формирование запросов может упасть (любая ошибка в
-      ``build_document_queries``).
+    - ``build_index_plan`` возвращает ``None`` вместо проброса —
+      это pickle-совместимый сигнал ошибки.
 
-    Во всех случаях функция возвращает ``None`` — это pickle-совместимый
-    сигнал ошибки. ``ScanPipeline`` интерпретирует его как «документ
-    не удалось проиндексировать» и публикует событие
-    ``FileProcessingFailed``.
+    Во всех случаях функция возвращает ``None``. ``ScanPipeline``
+    интерпретирует ``None`` как «документ не удалось проиндексировать»
+    и публикует событие ``FileProcessingFailed``.
 
     **Почему не пробрасывается исключение.** Если worker поднимет
     исключение, оно сериализуется и передаётся родителю через IPC.
     Это сработало бы, но добавляет сложность (обработка
     ``BaseException``, потеря traceback) и лишает ``ScanPipeline``
-    единообразия: сейчас и ``extract_document_queries``, и
-    ``TextIndexer.prepare_document_queries`` (thread-fallback)
+    единообразия: сейчас и ``build_index_plan_in_subprocess``, и
+    ``build_index_plan`` (вызывается из ``TextIndexer.prepare_index_plan``)
     сигнализируют об ошибке одним и тем же способом — ``None``.
 
     Потокобезопасность:
@@ -146,32 +149,37 @@ def extract_document_queries(
     - Внутри одного дочернего процесса функция выполняется
       в единственном потоке.
 
+    Picklability:
+
+    - Функция определена на уровне модуля — pickle-совместима.
+    - Аргументы — примитивы (str, int).
+    - Возвращаемое значение — ``DocumentIndexPlan`` (frozen dataclass
+      с tuple-полями) или ``None``. Оба варианта pickle-совместимы.
+
     Args:
-        abs_file_path: Абсолютный путь к PDF-файлу в файловой
-            системе родительского процесса. В дочернем процессе
-            (forkserver) путь доступен, поскольку рабочая
-            директория и файловая система общие.
         doc_id: Идентификатор документа в БД. Используется в
-            SQL-запросах индексирования.
-        relative_path: Относительный путь файла (от каталога РД).
-            Записывается в таблицу ``documents``.
+            полях ``DocumentIndexPlan.doc_id``.
+        file_path: Относительный путь файла (от каталога РД).
+            Записывается в ``DocumentIndexPlan.file_path``.
         file_hash: Хеш файла (SHA-256). Записывается в
-            ``documents.file_hash``.
+            ``DocumentIndexPlan.file_hash``.
         file_size: Размер файла в байтах. Записывается в
-            ``documents.file_size`` и ``documents.cached_size``.
+            ``DocumentIndexPlan.file_size``.
         last_modified: Дата изменения в формате ISO 8601.
-            Записывается в ``documents.last_modified`` и
-            ``documents.cached_mtime``.
+            Записывается в ``DocumentIndexPlan.last_modified``.
+        abs_file_path: Абсолютный путь к PDF-файлу. В дочернем
+            процессе (forkserver) путь доступен, поскольку
+            рабочая директория и файловая система общие.
 
     Returns:
-        Список кортежей ``(SQL-запрос, параметры)`` для батчевой
-        записи в БД, либо ``None`` при любой ошибке.
+        :class:`DocumentIndexPlan` с метаданными и страницами
+        документа, либо ``None`` при любой ошибке.
     """
     try:
         extractor = PyMuPDFTextExtractor()
-        return build_document_queries(
+        return build_index_plan(
             doc_id=doc_id,
-            file_path=relative_path,
+            file_path=file_path,
             file_hash=file_hash,
             file_size=file_size,
             last_modified=last_modified,

@@ -22,45 +22,64 @@
 ``run_async``, поэтому флаг отмены одного запуска не влияет на
 следующий.
 
-Статус активации (Фаза 4 → Фаза 5)
-----------------------------------
+Статус активации (Фаза 5)
+-------------------------
 
-Все тесты модуля помечены ``pytestmark = pytest.mark.skip`` и будут
-активированы в **Фазе 5** плана рефакторинга v9. До этого момента
-они зависят от API, которого ещё нет в проекте:
+Тесты активированы в **Фазе 5** (DocumentIndexPlan). До этого
+момента они были помечены ``pytestmark = pytest.mark.skip`` из-за
+зависимости от API, введённого в Фазе 5:
 
-- ``DocumentIndexPlan`` (появляется в Фазе 5) — доменная модель
-  плана индексации без SQL-строк.
-- ``index_plan_worker`` (появляется в Фазе 5) — callable для
-  построения ``DocumentIndexPlan`` в subprocess; заменяет
-  ``pdf_worker`` (последний использовался как временный путь
-  через ``extract_document_queries`` до появления плана).
-- ``TextIndexer.prepare_index_plan`` / ``write_index_plans``
-  (появляются в Фазе 5) — заменяют
+- ``DocumentIndexPlan`` (``dds_core/domain/index_plan.py``) —
+  доменная модель плана индексации.
+- ``build_index_plan_in_subprocess``
+  (``dds_core/subprocess_tasks/pdf_workers.py``) — worker-функция
+  формирования плана в subprocess.
+- ``ITextIndexer.prepare_index_plan`` /
+  ``ITextIndexer.write_index_plans`` — методы, заменившие
   ``prepare_document_queries`` / ``write_documents_batch``.
 
-Что **уже сделано** в Фазе 4 (не требует повторного изменения при
-активации в Фазе 5):
+Что **сделано в Фазе 4** (не требует изменений):
 
-- ``ScanPipeline.__init__`` принимает опциональные ``process_runner``
-  (``IProcessTaskRunner``) и ``pdf_worker`` (``Callable``). При
-  активации тестов фабрика :func:`_make_pipeline` передаёт их
-  явно через параметры; если не передать — используется потоковый
-  fallback через ``indexer.prepare_document_queries``.
-- Заглушка :func:`_noop_pdf_worker` (модульная picklable-функция)
-  заменит worker в тестовом сценарии: путь через ``process_runner``
-  будет вызываться, но реального PDF-анализа не произойдёт.
+- ``ScanPipeline.__init__`` принимает ``process_runner``
+  (``IProcessTaskRunner``) и ``index_plan_worker`` (``Callable``).
+  Оба обязательны с Фазы 5; потоковый fallback удалён.
+- Заглушка :func:`_noop_index_plan_worker` (модульная picklable-функция)
+  возвращает ``None`` — путь через ``process_runner`` вызывается,
+  но реального анализа PDF не происходит.
 
-Что **предстоит сделать** при активации в Фазе 5:
+Что **сделано в Фазе 5**:
 
-1. Снять ``pytestmark = pytest.mark.skip(...)`` с модуля.
-2. В фабрике :func:`_make_pipeline` заменить передачу ``pdf_worker``
-   на ``index_plan_worker`` (в Фазе 5 ``DocumentIndexPlan`` заменит
-   «сырые» SQL-запросы).
-3. Восстановить импорт ``build_index_plan_in_subprocess`` из
-   ``dds_core.subprocess_tasks.pdf_workers`` (в Фазе 5 функция
-   получит имя ``build_index_plan_in_subprocess`` и сменит
-   сигнатуру/возвращаемый тип).
+- ``_StubIndexer`` обновлён под новый контракт ``ITextIndexer``.
+- ``_Stubs.index_plan_worker`` — новое поле.
+- ``_make_pipeline`` использует ``stubs.process_runner`` и
+  ``stubs.index_plan_worker``.
+- Снят ``pytestmark`` — 5 тестов активны.
+
+Синхронные тесты и изоляция event loop
+--------------------------------------
+
+Тесты написаны как **синхронные функции**, а корутины запускаются
+через helper :func:`_run`, который выполняет ``asyncio.run()`` в
+**отдельном потоке**. Причина — та же, что в
+``test_process_task_runner.py`` и ``test_process_runner_timeout.py``:
+
+- ``pytest-asyncio`` в режиме ``auto`` оборачивает тесты в общий
+  event loop. При полном прогоне набора (300+ тестов) running loop
+  остаётся активным в главном потоке от предыдущих async-тестов
+  (баг ``pytest-asyncio`` 1.4.0 + Python 3.14). Прямой
+  ``asyncio.run(coro)`` в этом случае падает с
+  ``RuntimeError: asyncio.run() cannot be called from a running
+  event loop`` — даже для полностью sync-теста, не имеющего
+  отношения к asyncio.
+- Отдельный поток **гарантированно** не имеет running loop:
+  ``asyncio.run`` внутри него всегда создаёт свежий loop. Это
+  изолирует тесты ``ScanPipeline`` от состояния, оставленного
+  другими тестами, без правок ``pytest-asyncio`` конфигурации и
+  без изменения production-кода.
+
+**Оверхед.** Один ``threading.Thread`` на тест (~10 мкс на
+создание) — на 5 тестов меньше 0.1 мс суммарно. Все тесты вместе
+укладываются в ~3 секунды, что подтверждается прогоном в изоляции.
 
 Стратегия тестирования
 ----------------------
@@ -78,22 +97,35 @@
 - **Scanner / Hasher / Indexer / TextExtractor** — заглушки.
   Возвращают фиксированные значения, детерминированы, не
   обращаются к ФС.
-- **Event bus** — реальный ``AsyncEventBus`` без запуска. Публикация
-  в unstarted bus — no-op, что изолирует тест от overhead'а
-  обработки событий.
-- **Executor** — реальный ``ThreadPoolExecutor`` с 2 воркерами;
-  закрывается в teardown.
+- **Event bus** — реальный ``AsyncEventBus`` без запуска.
+  Публикация в unstarted bus — no-op.
+- **Executor** — реальный ``ThreadPoolExecutor`` с 2 воркерами.
 
 Заглушка ``_StubIndexer`` реализует контракт ``ITextIndexer``
-**Фазы 4** (методы ``prepare_document_queries``,
-``write_documents_batch``, ``get_document_metadata``,
-``get_document_by_hash``, ``get_document_by_path``,
-``remove_document``). В Фазе 5 контракт изменится — заглушка
-должна быть обновлена вместе с ним (см. комментарий в её docstring).
+**Фазы 5**: методы ``prepare_index_plan``, ``write_index_plans``,
+``remove_document``, ``get_document_metadata``,
+``get_document_by_hash``, ``get_document_by_path``.
+
+LSP-совместимость заглушек:
+
+``_StubProcessRunner`` — замена ``IProcessTaskRunner``. Сигнатуры
+методов ``run`` и ``close`` **точно соответствуют** контракту
+Protocol:
+
+- ``run.kind: Literal["interactive", "batch"]`` (не ``str``) —
+  иначе стаб шире контракта;
+- ``run.func: Callable[..., Any]`` (не ``Any``);
+- ``close.shutdown_timeout: float | None`` (не ``float``) — иначе
+  стаб уже контракта.
+
+Pylance/mypy проверяют, что экземпляр стаба присваивается параметру
+типа ``IProcessTaskRunner`` без нарушения LSP. Ослабление или
+ужесточение сигнатуры приводило бы к ``reportArgumentType``.
 
 Проверяемые инварианты
 ----------------------
-- ``status`` после отмены — ``INTERRUPTED`` (не ``ERROR``, не ``RUNNING``).
+- ``status`` после отмены — ``INTERRUPTED`` (не ``ERROR``, не
+  ``RUNNING``).
 - ``CancelledError`` пробрасывается наружу при внешней отмене.
 - Отменённый конвейер не блокирует ``await task`` (нет deadlock).
 - Воркеры останавливаются: количество вызовов ``process_runner.run``
@@ -108,7 +140,7 @@
   покрывает только логику ``ScanPipeline``.
 - **MAX_SCAN_ERRORS** — отдельный сценарий; тестируется в файлах
   обработки ошибок.
-- **Реальное извлечение текста** через PyMuPDF — не в области
+- **Реальное формирование плана** через PyMuPDF — не в области
   этого теста (см. ``bench_slow.py``).
 
 Запуск
@@ -121,46 +153,29 @@
     - модуль не выполняет логирования;
     - не читает и не пишет production-файлы (все ресурсы — в tmp);
     - каждый тест изолирован (function-scoped fixtures);
-    - асинхронные сценарии запускаются через ``asyncio.run`` —
-      без зависимости от конфигурации ``pytest-asyncio``.
+    - асинхронные сценарии запускаются через :func:`_run` в
+      отдельном потоке — без зависимости от утечки running loop
+      от ``pytest-asyncio``.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterator
+import threading
+from collections.abc import Callable, Coroutine, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, TypeVar
 
 import pytest
 from dds_core.application.scan_pipeline import ScanPipeline
+from dds_core.domain.index_plan import DocumentIndexPlan
 from dds_core.domain.interfaces import IDatabase, IEventBus
 from dds_core.domain.models import ScanStatus
 from dds_core.infrastructure.database import DatabaseManager
 from dds_core.infrastructure.event_bus import AsyncEventBus
 from dds_core.infrastructure.sqlite_adapter import SQLiteAdapter
-
-# ----------------------------------------------------------------------
-# Статус активации
-# ----------------------------------------------------------------------
-#
-# Все тесты модуля пропущены до Фазы 5. Причина — зависимость от
-# API, которое появится в Фазе 5 (см. модульный docstring,
-# раздел «Статус активации»). Инфраструктура тестов (заглушки,
-# фабрика, fixtures) сохранена и готова к активации.
-#
-# Фаза 4 добавила в ScanPipeline.__init__ параметры process_runner
-# и pdf_worker, поэтому фабрика _make_pipeline принимает их как
-# опциональные. При активации в Фазе 5 достаточно:
-#   1. Снять pytestmark.
-#   2. Заменить pdf_worker на index_plan_worker (см. docstring
-#      _make_pipeline).
-#   3. Восстановить импорт build_index_plan_in_subprocess.
-# ----------------------------------------------------------------------
-pytestmark = pytest.mark.skip(reason="activated in phase 5 (ProcessTaskRunner, DocumentIndexPlan)")
-
 
 # =====================================================================
 # Константы
@@ -177,10 +192,10 @@ _SCAN_TOTAL_FILES = 50
 _RUNNER_DELAY_SECONDS = 0.05
 """Задержка в ``_StubProcessRunner.run``.
 
-Эмулирует стоимость извлечения текста. 50 мс обеспечивают
-предсказуемый тайминг отмены: pipeline стартует, воркеры
-начинают обработку, ``cancel()`` вызывается на первом же
-обработанном файле.
+Эмулирует стоимость формирования плана индексации. 50 мс
+обеспечивают предсказуемый тайминг отмены: pipeline стартует,
+воркеры начинают обработку, ``cancel()`` вызывается на первом
+же обработанном файле.
 """
 
 _EXECUTOR_MAX_WORKERS = 2
@@ -190,6 +205,72 @@ _EXECUTOR_MAX_WORKERS = 2
 параллелизме, а меньшее число воркеров снижает риск гонок в
 момент отмены.
 """
+
+_T = TypeVar("_T")
+
+
+# =====================================================================
+# Helpers
+# =====================================================================
+
+
+def _run(coro: Coroutine[Any, Any, _T]) -> _T:
+    """Запускает корутину в отдельном потоке с собственным event loop.
+
+    **Зачем отдельный поток, а не прямой ``asyncio.run()``.**
+    ``pytest-asyncio`` в режиме ``auto`` оборачивает тесты в общий
+    event loop. При полном прогоне набора (300+ тестов) running loop
+    остаётся активным в главном потоке от предыдущих async-тестов
+    (баг ``pytest-asyncio`` 1.4.0 + Python 3.14). Прямой
+    ``asyncio.run(coro)`` в этом случае падает с
+    ``RuntimeError: asyncio.run() cannot be called from a running
+    event loop`` — даже для полностью sync-теста, не имеющего
+    отношения к asyncio.
+
+    Отдельный поток не имеет running loop по определению —
+    ``asyncio.run(coro)`` внутри него всегда создаёт свежий loop.
+    Это изолирует тесты ``ScanPipeline`` от состояния, оставленного
+    другими тестами, и не требует ни правок pytest-asyncio
+    конфигурации, ни изменения production-кода.
+
+    **Оверхед.** Один ``threading.Thread`` на тест (~10 мкс на
+    создание) — на 5 тестов меньше 0.1 мс суммарно. Все тесты
+    укладываются в ~3 секунды (подтверждено прогоном в изоляции).
+
+    **Аннотация ``Coroutine[Any, Any, _T]``.** Соответствует
+    typeshed: ``asyncio.run`` принимает именно ``Coroutine``, а не
+    произвольный ``Awaitable``. Все вызовы ``_run`` — от ``async
+    def``-функций, поэтому сужение типа корректно.
+
+    **Проброс исключений.** Исключение из корутины сохраняется в
+    списке ``errors`` и поднимается в главном потоке. ``pytest.raises``
+    в вызывающем тесте видит его как обычно.
+
+    Args:
+        coro: Корутина для выполнения.
+
+    Returns:
+        Результат корутины.
+
+    Raises:
+        BaseException: Любое исключение, поднятое корутиной.
+    """
+    results: list[_T] = []
+    errors: list[BaseException] = []
+
+    def _target() -> None:
+        try:
+            results.append(asyncio.run(coro))
+        except BaseException as e:  # noqa: BLE001 — проброс через границу потока
+            errors.append(e)
+
+    thread = threading.Thread(target=_target)
+    thread.start()
+    thread.join()
+
+    if errors:
+        raise errors[0]
+    return results[0]
 
 
 # =====================================================================
@@ -244,33 +325,24 @@ class _StubHasher:
 class _StubIndexer:
     """Заглушка ``ITextIndexer``.
 
-    Реализует контракт ``ITextIndexer`` **Фазы 4**:
+    Реализует контракт ``ITextIndexer`` **Фазы 5**:
 
-    - ``prepare_document_queries`` — подготовка SQL-запросов
-      для одного документа (возвращает ``None`` — «пустой
-      документ, ничего не извлекаем»);
-    - ``write_documents_batch`` — батчевая запись (возвращает
+    - ``prepare_index_plan`` — подготовка плана для одного документа
+      (возвращает ``None`` — «пустой документ, ничего не извлекаем»);
+    - ``write_index_plans`` — батчевая запись (возвращает
       ``(N, 0)`` — «всё успешно, ошибок нет»);
-    - ``get_document_metadata`` — метаданные по пути (``None`` —
-      «нет закэшированных данных»);
+    - ``remove_document`` — удаление (no-op);
     - ``get_document_by_hash`` / ``get_document_by_path`` — поиск
       по хешу/пути (``None`` — «не найден»);
-    - ``remove_document`` — удаление (no-op).
+    - ``get_document_metadata`` — метаданные по пути (``None`` —
+      «нет закэшированных данных»).
 
-    В **Фазе 5** контракт ``ITextIndexer`` изменится:
-
-    - ``prepare_document_queries`` заменится на
-      ``prepare_index_plan`` (возвращает ``DocumentIndexPlan``);
-    - ``write_documents_batch`` заменится на
-      ``write_index_plans`` (принимает ``list[DocumentIndexPlan]``);
-    - сигнатура ``get_document_metadata`` расширится (см. шаг 4.4
-      плана v9).
-
-    При активации тестов в Фазе 5 заглушка должна быть обновлена
-    в соответствии с новым контрактом.
+    Все методы — no-op заглушки: тесты проверяют логику отмены,
+    а не индексацию. Заглушка не содержит изменяемого состояния,
+    потокобезопасна.
     """
 
-    def prepare_document_queries(
+    def prepare_index_plan(
         self,
         doc_id: str,
         file_path: str,
@@ -278,24 +350,20 @@ class _StubIndexer:
         file_size: int,
         last_modified: str,
         abs_file_path: str,
-    ) -> list[tuple[str, tuple]] | None:
-        """Фаза 4: возвращает ``None`` («нет данных для индексации»).
+    ) -> DocumentIndexPlan | None:
+        """Фаза 5: возвращает ``None`` («нет данных для индексации»).
 
-        В реальной реализации метод открывает PDF и формирует SQL
-        для страниц. В заглушке — no-op: тесты проверяют логику
-        отмены, а не извлечение текста.
-
-        В Фазе 5 метод удаляется вместе с интерфейсом — вместо
-        него вызывается ``prepare_index_plan``.
+        В реальной реализации метод открывает PDF и формирует
+        ``DocumentIndexPlan``. В заглушке — no-op.
         """
         return None
 
-    def write_documents_batch(
+    def write_index_plans(
         self,
-        document_batches: list[list[tuple[str, tuple]]],
+        plans: list[DocumentIndexPlan],
     ) -> tuple[int, int]:
-        """Фаза 4: батчевая запись. Возвращает ``(N, 0)``."""
-        return len(document_batches), 0
+        """Фаза 5: батчевая запись. Возвращает ``(N, 0)``."""
+        return len(plans), 0
 
     def remove_document(self, doc_id: str) -> None:
         """No-op."""
@@ -315,10 +383,9 @@ class _StubIndexer:
     ) -> tuple[str, str, int, str] | None:
         """Нет закэшированных метаданных → возврат ``None``.
 
-        Сигнатура соответствует расширенному контракту
-        ``ITextIndexer.get_document_metadata`` (шаг 4.4 плана v9):
-        4-элементный кортеж ``(doc_id, file_hash, cached_size,
-        cached_mtime)``.
+        Сигнатура соответствует контракту ``ITextIndexer``
+        (4-элементный кортеж ``(doc_id, file_hash, cached_size,
+        cached_mtime)``).
         """
         return None
 
@@ -328,30 +395,35 @@ class _StubTextExtractor:
 
     Используется как обязательный параметр конструктора
     ``ScanPipeline`` (поле ``text_extractor``). Внутри конвейера
-    не вызывается напрямую: извлечение текста выполняется через
-    ``process_runner`` или через ``_indexer.prepare_document_queries``.
+    не вызывается напрямую: формирование плана выполняется через
+    ``process_runner``.
     """
 
     def open_document(self, file_path: str) -> Any:
-        """Не вызывается в skip-тестах. Заглушка для типизации."""
-        raise NotImplementedError("StubTextExtractor.open_document: активируется в Фазе 4/5.")
+        """Не вызывается в тестах отмены. Заглушка для типизации."""
+        raise NotImplementedError("StubTextExtractor.open_document: не вызывается в тестах отмены.")
 
 
 class _StubProcessRunner:
     """Заглушка ``IProcessTaskRunner``.
 
     Эмулирует работу ``process_runner.run`` через ``asyncio.sleep``,
-    не создавая дочерних процессов. Публичный интерфейс совпадает
-    с реальным runner'ом (сигнатура метода ``run``).
+    не создавая дочерних процессов. Сигнатуры методов ``run`` и
+    ``close`` **точно соответствуют** контракту
+    ``IProcessTaskRunner`` (LSP-совместимость): ``kind`` ограничен
+    ``Literal["interactive", "batch"]``, ``shutdown_timeout``
+    принимает ``float | None``.
+
+    LSP-совместимость критична для статического анализа: Pylance
+    (и mypy) проверяют, что экземпляр стаба может быть присвоен
+    параметру типа ``IProcessTaskRunner`` без нарушения
+    контракта. Ослабление сигнатуры (например, ``kind: str``)
+    приводило бы к ошибке ``reportArgumentType``.
 
     Дополнительно предоставляет ``first_call_event`` — ``asyncio.Event``,
     который устанавливается при первом вызове. Тесты ожидают его
     перед вызовом ``pipeline.cancel()``, чтобы гарантировать, что
     конвейер действительно начал обработку.
-
-    При активации в Фазе 5 будет использоваться вместо реального
-    ``ProcessTaskRunner``; фабрика :func:`_make_pipeline` передаёт
-    его через параметр ``process_runner``.
     """
 
     def __init__(self, delay: float) -> None:
@@ -362,17 +434,24 @@ class _StubProcessRunner:
 
     async def run(
         self,
-        func: Any,
+        func: Callable[..., Any],
         *args: Any,
         timeout: float,
-        kind: str = "interactive",
+        kind: Literal["interactive", "batch"] = "interactive",
     ) -> Any:
         """Эмулирует работу: sleep(delay) → ``None``.
 
-        Возвращает ``None`` — это соответствует поведению
-        реального ``pdf_worker`` при ошибке открытия PDF. Конвейер
+        Возвращает ``None`` — это соответствует поведению реального
+        ``index_plan_worker`` при ошибке открытия PDF. Конвейер
         интерпретирует результат как «файл помечен ошибочным», но
         в контексте тестов отмены это не важно.
+
+        Args:
+            func: Worker-функция (не вызывается в заглушке).
+            *args: Аргументы (не используются).
+            timeout: Таймаут (не используется).
+            kind: Режим пула (не используется; сигнатура совпадает
+                с контрактом ``IProcessTaskRunner``).
         """
         if self._closed:
             raise RuntimeError("ProcessTaskRunner is closed")
@@ -382,8 +461,14 @@ class _StubProcessRunner:
         await asyncio.sleep(self._delay)
         return None
 
-    async def close(self, shutdown_timeout: float = 10.0) -> None:
-        """No-op: заглушка не владеет ресурсами."""
+    async def close(self, shutdown_timeout: float | None = None) -> None:
+        """No-op: заглушка не владеет ресурсами.
+
+        Args:
+            shutdown_timeout: Игнорируется (заглушка не владеет
+                процессами). Сигнатура совпадает с контрактом
+                ``IProcessTaskRunner.close``.
+        """
         self._closed = True
 
 
@@ -404,8 +489,10 @@ class _Stubs:
             параметр ``ScanPipeline.__init__``; внутри конвейера
             не вызывается напрямую).
         process_runner: Заглушка ``IProcessTaskRunner``. Передаётся
-            в ``ScanPipeline`` при активации тестов в Фазе 5 (см.
-            параметр ``process_runner`` фабрики :func:`_make_pipeline`).
+            в ``ScanPipeline`` как ``process_runner``.
+        index_plan_worker: Picklable-функция формирования плана
+            индексации. Передаётся в ``ScanPipeline`` как
+            ``index_plan_worker``.
         rd_directory: Фиктивный корневой каталог РД.
     """
 
@@ -414,6 +501,7 @@ class _Stubs:
     indexer: _StubIndexer
     text_extractor: _StubTextExtractor
     process_runner: _StubProcessRunner
+    index_plan_worker: Callable[..., Any]
     rd_directory: str
 
 
@@ -422,9 +510,6 @@ def _make_pipeline(
     stubs: _Stubs,
     executor: ThreadPoolExecutor,
     event_bus: IEventBus,
-    *,
-    process_runner: Any | None = None,
-    pdf_worker: Callable[..., Any] | None = None,
 ) -> ScanPipeline:
     """Собирает ``ScanPipeline`` со стабами для теста отмены.
 
@@ -432,27 +517,9 @@ def _make_pipeline(
     реальные, но изолированные компоненты (SQLite на tmp, unstarted
     event bus).
 
-    Параметры ``process_runner`` и ``pdf_worker`` опциональны.
-    Если заданы — ``ScanPipeline`` использует приоритетный путь
-    извлечения через subprocess (Фаза 4). Если ``None`` —
-    используется потоковый fallback через
-    ``indexer.prepare_document_queries`` в ``scan_executor``.
-
-    При активации тестов в Фазе 5 фабрика будет вызываться так::
-
-        _make_pipeline(
-            db, stubs, executor, event_bus,
-            process_runner=stubs.process_runner,
-            pdf_worker=_noop_pdf_worker,
-        )
-
-    Начиная с Фазы 5 сигнатура расширится:
-
-    - ``pdf_worker`` заменится на ``index_plan_worker`` (см.
-      ``DocumentIndexPlan``);
-    - сигнатура воркера изменится: вместо 6 позиционных
-      аргументов — кортеж параметров и возвращаемый тип
-      ``DocumentIndexPlan | None``.
+    ``process_runner`` и ``index_plan_worker`` берутся из ``stubs``
+    (``stubs.process_runner``, ``stubs.index_plan_worker``). Оба
+    обязательны с Фазы 5 (ADR-005): потоковый fallback удалён.
 
     Args:
         db: Реальный SQLiteAdapter на tmp_path с созданной схемой.
@@ -460,14 +527,6 @@ def _make_pipeline(
         executor: Реальный ThreadPoolExecutor для блокирующих
             операций (scan_directory, hashing, write_index_plans).
         event_bus: AsyncEventBus (не запущен).
-        process_runner: Опциональный ``IProcessTaskRunner``.
-            Если задан — используется приоритетный путь
-            извлечения (Фаза 4). Значение по умолчанию ``None``
-            сохраняет потоковый fallback.
-        pdf_worker: Опциональная picklable-функция извлечения
-            текста одного PDF. Обязательна при заданном
-            ``process_runner``. Значение по умолчанию ``None``
-            сохраняет потоковый fallback.
 
     Returns:
         Настроенный ``ScanPipeline``.
@@ -483,54 +542,46 @@ def _make_pipeline(
         max_extract_workers=2,
         scan_executor=executor,
         document_cache=None,
-        process_runner=process_runner,
-        pdf_worker=pdf_worker,
+        process_runner=stubs.process_runner,
+        index_plan_worker=stubs.index_plan_worker,
     )
 
 
-def _noop_pdf_worker(
-    abs_file_path: str,
+def _noop_index_plan_worker(
     doc_id: str,
-    relative_path: str,
+    file_path: str,
     file_hash: str,
     file_size: int,
     last_modified: str,
-) -> list[tuple[str, tuple]] | None:
-    """Фиктивный worker для ``pdf_worker`` в тестах отмены.
+    abs_file_path: str,
+) -> DocumentIndexPlan | None:
+    """Фиктивный worker для ``index_plan_worker`` в тестах отмены.
 
     Модульная (picklable) функция с сигнатурой, совпадающей
-    с ``extract_document_queries``. Возвращает ``None`` — как
-    реальный worker при ошибке открытия PDF. Используется
-    заглушкой ``_StubProcessRunner``: ``run(_noop_pdf_worker, ...)``
-    вызывается без реального subprocess, но с корректным
+    с ``build_index_plan_in_subprocess``. Возвращает ``None`` —
+    как реальный worker при ошибке открытия PDF. Используется
+    заглушкой ``_StubProcessRunner``: ``run(_noop_index_plan_worker,
+    ...)`` вызывается без реального subprocess, но с корректным
     интерфейсом.
 
-    Начиная с Фазы 5 будет заменена на ``index_plan_worker`` с
-    другой сигнатурой и возвращаемым типом ``DocumentIndexPlan``.
+    Аргументы соответствуют сигнатуре
+    ``build_index_plan_in_subprocess`` (Шаг 7 Фазы 5):
+    ``doc_id, file_path, file_hash, file_size, last_modified,
+    abs_file_path``. Порядок важен — ``ScanPipeline._extract_worker``
+    передаёт их позиционно.
 
     Args:
-        abs_file_path: Абсолютный путь к PDF.
         doc_id: Идентификатор документа.
-        relative_path: Относительный путь (от каталога РД).
+        file_path: Относительный путь (от каталога РД).
         file_hash: Хеш файла.
         file_size: Размер файла в байтах.
         last_modified: Дата изменения (ISO 8601).
+        abs_file_path: Абсолютный путь к PDF.
 
     Returns:
         ``None`` (сигнал «нет данных для индексации»).
     """
     return None
-
-
-def _noop_index_plan_worker(*args: Any, **kwargs: Any) -> list[Any]:
-    """Фиктивный worker для ``index_plan_worker`` (Фаза 5).
-
-    Возвращает пустой план. В Фазе 4 не используется: параметр
-    ``index_plan_worker`` появится в ``ScanPipeline`` только в
-    Фазе 5 (вместе с ``DocumentIndexPlan``). Функция сохранена
-    как заготовка для активации.
-    """
-    return []
 
 
 # =====================================================================
@@ -561,6 +612,7 @@ def stubs(tmp_path: Path) -> _Stubs:
         indexer=_StubIndexer(),
         text_extractor=_StubTextExtractor(),
         process_runner=_StubProcessRunner(delay=_RUNNER_DELAY_SECONDS),
+        index_plan_worker=_noop_index_plan_worker,
         rd_directory=base,
     )
 
@@ -643,7 +695,7 @@ def test_cancelled_error_propagates_to_caller(
     """
     pipeline = _make_pipeline(real_db, stubs, executor, event_bus)
 
-    async def _run() -> None:
+    async def _body() -> None:
         task = asyncio.create_task(
             pipeline.run_async(
                 rd_directory=stubs.rd_directory,
@@ -660,7 +712,7 @@ def test_cancelled_error_propagates_to_caller(
         with pytest.raises(asyncio.CancelledError):
             await task
 
-    asyncio.run(_run())
+    _run(_body())
 
     progress = pipeline.get_progress()
     assert (
@@ -690,7 +742,7 @@ def test_cooperative_cancel_sets_interrupted_status(
     """
     pipeline = _make_pipeline(real_db, stubs, executor, event_bus)
 
-    async def _run() -> Any:
+    async def _body() -> Any:
         task = asyncio.create_task(
             pipeline.run_async(
                 rd_directory=stubs.rd_directory,
@@ -706,7 +758,7 @@ def test_cooperative_cancel_sets_interrupted_status(
         # Задача должна завершиться нормально — без CancelledError.
         return await asyncio.wait_for(task, timeout=10.0)
 
-    progress = asyncio.run(_run())
+    progress = _run(_body())
 
     assert (
         progress.status == ScanStatus.INTERRUPTED
@@ -734,7 +786,7 @@ def test_cancel_stops_workers_before_all_files_processed(
     """
     pipeline = _make_pipeline(real_db, stubs, executor, event_bus)
 
-    async def _run() -> None:
+    async def _body() -> None:
         task = asyncio.create_task(
             pipeline.run_async(
                 rd_directory=stubs.rd_directory,
@@ -749,7 +801,7 @@ def test_cancel_stops_workers_before_all_files_processed(
         pipeline.cancel()
         await asyncio.wait_for(task, timeout=10.0)
 
-    asyncio.run(_run())
+    _run(_body())
 
     assert stubs.process_runner.call_count < _SCAN_TOTAL_FILES, (
         f"Воркеры не остановились: обработано "
@@ -792,7 +844,7 @@ def test_new_run_resets_cancel_state(
         pipeline.cancel()
         await asyncio.wait_for(task, timeout=10.0)
 
-    asyncio.run(_first_run())
+    _run(_first_run())
     assert pipeline.get_progress().status == ScanStatus.INTERRUPTED
 
     # --- Второй запуск: свежий pipeline без отмены. ---------------
@@ -812,7 +864,7 @@ def test_new_run_resets_cancel_state(
             timeout=30.0,
         )
 
-    progress = asyncio.run(_second_run())
+    progress = _run(_second_run())
     assert (
         progress.status == ScanStatus.COMPLETED
     ), f"Второй запуск завершился со статусом {progress.status!r}, ожидался COMPLETED"
@@ -841,7 +893,7 @@ def test_cancel_before_run_async_is_noop(
     # До run_async _cancel_event не создан — cancel() должен быть no-op.
     pipeline.cancel()
 
-    async def _run() -> Any:
+    async def _body() -> Any:
         return await asyncio.wait_for(
             pipeline.run_async(
                 rd_directory=stubs.rd_directory,
@@ -851,5 +903,5 @@ def test_cancel_before_run_async_is_noop(
             timeout=30.0,
         )
 
-    progress = asyncio.run(_run())
+    progress = _run(_body())
     assert progress.status == ScanStatus.COMPLETED

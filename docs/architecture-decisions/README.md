@@ -238,8 +238,6 @@ deprecation-запись может ссылаться на ADR, вводящи�
 | ADR-003 | Domain Text Normalization | accepted | 3 |
 | ADR-004 | ProcessTaskRunner | accepted | 4 |
 | ADR-005 | DocumentIndexPlan | accepted | 5 |
-| ADR-006 | Server-side Terms | accepted | 6 |
-| ADR-007 | Client AbortController | accepted | 7 |
 
 ### Superseded
 

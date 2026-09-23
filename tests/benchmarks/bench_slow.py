@@ -4,39 +4,32 @@
 Назначение
 ----------
 Замер времени выполнения полного цикла ``ScanPipeline.run_async``:
-обход каталога, ленивое хеширование, извлечение текста через
-``ProcessTaskRunner`` (process-per-task + forkserver), батчевая
+обход каталога, ленивое хеширование, формирование планов индексации
+через ``ProcessTaskRunner`` (process-per-task + forkserver), батчевая
 запись в SQLite. Датасет — каталог PDF-файлов, сгенерированный
 на лету через PyMuPDF.
 
 Метрика: ``test_scan_full_1000_pdfs`` (соответствует ключу
 ``scan_full`` в ``baseline.json``).
 
-Статус активации (Фаза 0)
--------------------------
-Тест ``test_scan_full_1000_pdfs`` помечен ``@pytest.mark.skip``
-и будет активирован в **Фазе 5** плана рефакторинга v9. До этого
-момента он зависит от API, которого ещё нет в проекте:
+Статус: активен (Фаза 5)
+------------------------
 
-- ``ProcessTaskRunner`` (появляется в Фазе 4);
-- ``DocumentIndexPlan`` и обновлённые сигнатуры
-  ``TextIndexer.__init__(index_writer=...)`` и
-  ``ScanPipeline.__init__(process_runner=..., index_plan_worker=...)``
-  (появляются в Фазе 5);
-- ``build_index_plan_in_subprocess`` (появляется в Фазе 5).
+Тест активирован в **Фазе 5** (DocumentIndexPlan). До этого момента
+был помечен ``@pytest.mark.skip`` из-за зависимости от API,
+введённого в Фазах 4–5:
 
-Инфраструктура fixtures (датасет PDF, event bus, executors,
-конфигурация окружения) полностью готова и не зависит от
-будущих API. При активации в Фазе 5 достаточно:
-
-1. Снять ``@pytest.mark.skip`` с теста и фикстуры ``process_runner``.
-2. Восстановить удалённые импорты (см. блок «Импорты, которые
-   будут добавлены в Фазе 5» в docstring теста).
-3. Вернуть тело теста.
-
-Причины такой организации описаны в общем плане Фазы 0:
-заделы на будущие фазы не должны создавать ошибок статического
-анализа или шума в pre-commit.
+- ``ProcessTaskRunner`` (Фаза 4) — process-per-task исполнитель
+  (``forkserver`` на Linux).
+- ``DocumentIndexPlan`` и ``build_index_plan_in_subprocess``
+  (Фаза 5) — доменная модель плана индексации и worker-функция
+  для subprocess.
+- ``ITextIndexer.prepare_index_plan`` /
+  ``ITextIndexer.write_index_plans`` (Фаза 5) — методы,
+  заменившие ``prepare_document_queries`` /
+  ``write_documents_batch``.
+- ``IIndexWriter`` и ``SqliteIndexWriter`` (Фаза 5) — абстракция
+  записи планов и её реализация через SQLite FTS5.
 
 Почему отдельный файл от ``bench_fast.py``
 ------------------------------------------
@@ -69,7 +62,7 @@ duplicate-detection.
 
 1. **Ленивое хеширование не пропускает файлы.** Нет cached
    metadata → все файлы хешируются.
-2. **Извлечение текста выполняется для всех файлов.** Нет
+2. **Формирование планов выполняется для всех файлов.** Нет
    зарегистрированных хешей → все файлы «новые».
 3. **Полная запись в БД.** Ничего не пропускается как duplicate.
 
@@ -128,12 +121,12 @@ two-sided. При n = 3 с каждой стороны — минимально 
 2. **Детерминированный датасет.** Random с фиксированным seed;
    параметры через ``DDS_BENCH_*``.
 3. **Event bus не запущен.** См. выше.
-4. **Session-scoped event loop.** ``ProcessTaskRunner._global``
-   (``asyncio.Semaphore``) привязывается к первому loop'у при
-   первом использовании. Все прогоны используют один loop.
+4. **Session-scoped event loop.** ``ProcessTaskRunner`` использует
+   ``asyncio.Semaphore``, которые привязываются к первому loop'у
+   при первом использовании. Все прогоны используют один loop.
 5. **One-shot процесс.** Раз в сессию создаётся ``ProcessTaskRunner``
-   с ``max_concurrent = PROCESS_RUNNER_MAX_CONCURRENT`` (появится
-   в Фазе 4); закрывается в teardown fixture.
+   с production-конфигурацией из ``config``; закрывается в teardown
+   fixture.
 6. **Reference-справочники не заполняются.** Бенчмарк не использует
    ``DocumentMetadataService`` (обновление метаданных — отдельный
    этап вторичного сканирования, замеряется вне этого файла).
@@ -173,32 +166,19 @@ from typing import Any
 
 import pymupdf
 import pytest
+from dds_core.application.indexer import TextIndexer
+from dds_core.application.scan_pipeline import ScanPipeline
+from dds_core.domain import config
+from dds_core.domain.models import ScanStatus
+from dds_core.infrastructure.database import DatabaseManager
 from dds_core.infrastructure.event_bus import AsyncEventBus
 from dds_core.infrastructure.file_hasher import FileHasher
 from dds_core.infrastructure.file_scanner import DirectoryScanner
-
-# ----------------------------------------------------------------------
-# Импорты, которые будут восстановлены в Фазе 5
-# ----------------------------------------------------------------------
-#
-# При активации теста ``test_scan_full_1000_pdfs`` сюда вернутся:
-#
-#   from dds_core.application.indexer import TextIndexer
-#   from dds_core.application.scan_pipeline import ScanPipeline
-#   from dds_core.domain import config
-#   from dds_core.domain.models import ScanStatus
-#   from dds_core.infrastructure.database import DatabaseManager
-#   from dds_core.infrastructure.process_task_runner import ProcessTaskRunner
-#   from dds_core.infrastructure.sqlite_adapter import SQLiteAdapter
-#   from dds_core.subprocess_tasks.pdf_workers import (
-#       build_index_plan_in_subprocess,
-#   )
-#
-# До Фазы 5 они удалены: модули ``process_task_runner`` и
-# ``subprocess_tasks.pdf_workers`` ещё не существуют, а остальные
-# используются только в отложенном теле теста.
-# ----------------------------------------------------------------------
-
+from dds_core.infrastructure.process_task_runner import ProcessTaskRunner
+from dds_core.infrastructure.pymupdf_text_extractor import PyMuPDFTextExtractor
+from dds_core.infrastructure.sqlite_adapter import SQLiteAdapter
+from dds_core.infrastructure.sqlite_index_writer import SqliteIndexWriter
+from dds_core.subprocess_tasks.pdf_workers import build_index_plan_in_subprocess
 
 # =====================================================================
 # Константы
@@ -368,8 +348,8 @@ def bench_event_loop() -> Iterator[asyncio.AbstractEventLoop]:
     """Session-scoped event loop для async-бенчмарков и fixtures.
 
     Все прогоны используют один и тот же loop, потому что
-    ``ProcessTaskRunner._global`` (``asyncio.Semaphore``)
-    привязывается к первому loop'у при использовании. Создание
+    ``ProcessTaskRunner`` создаёт ``asyncio.Semaphore``, которые
+    привязываются к первому loop'у при использовании. Создание
     нового loop'а для каждого прогона привело бы к
     ``RuntimeError: ... is bound to a different event loop``.
 
@@ -452,10 +432,8 @@ def scan_executor() -> Iterator[ThreadPoolExecutor]:
     Yields:
         Настроенный ThreadPoolExecutor.
     """
-    # Локальное значение, чтобы избежать импорта config до Фазы 5.
-    # В Фазе 5 заменить на config.SCAN_EXECUTOR_MAX_WORKERS.
     executor = ThreadPoolExecutor(
-        max_workers=6,
+        max_workers=config.SCAN_EXECUTOR_MAX_WORKERS,
         thread_name_prefix="bench-scan",
     )
     try:
@@ -465,28 +443,30 @@ def scan_executor() -> Iterator[ThreadPoolExecutor]:
 
 
 @pytest.fixture(scope="session")
-def process_runner() -> Iterator[Any]:
-    """ProcessTaskRunner для извлечения текста.
+def process_runner() -> Iterator[ProcessTaskRunner]:
+    """ProcessTaskRunner с production-конфигурацией.
 
-    Активируется в **Фазе 4**, когда появится
-    ``dds_core/infrastructure/process_task_runner.py``. До этого
-    момента фикстура помечена как skip-заглушка: тест
-    ``test_scan_full_1000_pdfs`` не запускается, но его зависимости
-    остаются задекларированы.
+    Создаётся один раз на сессию. Параметры (``max_concurrent``,
+    ``batch_slots``, ``shutdown_timeout``) берутся из
+    ``dds_core.domain.config`` — те же, что в ``lifespan.py``.
 
-    Параметры production-варианта (будут заданы после Фазы 4):
-
-    - ``max_concurrent = PROCESS_RUNNER_MAX_CONCURRENT`` (6);
-    - ``batch_slots = PROCESS_RUNNER_BATCH_SLOTS`` (4);
-    - контекст ``forkserver`` на Linux, ``spawn`` на других ОС;
-    - graceful shutdown через ``await runner.close(...)`` в
-      session-scoped event loop.
+    Закрывается в teardown через ``asyncio.run`` в изолированном
+    loop'е: session-scoped event loop (``bench_event_loop``)
+    закрывается отдельной fixture, но ``close()`` не использует
+    семафоры runner'а — они создаются отдельно для бенчмарка.
 
     Yields:
-        Заглушка (не используется до Фазы 4).
+        Настроенный :class:`ProcessTaskRunner`.
     """
-    pytest.skip("activated in phase 4 (ProcessTaskRunner)")
-    yield None
+    runner = ProcessTaskRunner()
+    try:
+        yield runner
+    finally:
+        asyncio.run(
+            runner.close(
+                shutdown_timeout=config.PROCESS_RUNNER_SHUTDOWN_TIMEOUT,
+            )
+        )
 
 
 @pytest.fixture(scope="session")
@@ -519,51 +499,55 @@ def file_hasher() -> FileHasher:
     return FileHasher()
 
 
+@pytest.fixture(scope="session")
+def mupdf_extractor() -> PyMuPDFTextExtractor:
+    """Экземпляр PyMuPDFTextExtractor для TextIndexer и ScanPipeline.
+
+    Экстрактор не хранит состояния (каждый вызов ``open_document``
+    возвращает независимый ``PyMuPDFTextDocument``), поэтому
+    переиспользование одного экземпляра между прогонами безопасно.
+
+    В бенчмарке ``scan.full`` путь через ``process_runner``
+    используется всегда, поэтому ``mupdf_extractor`` не вызывается
+    напрямую во время замера — он требуется только для
+    конструкторов ``TextIndexer`` и ``ScanPipeline`` (обязательные
+    параметры контракта).
+
+    Returns:
+        :class:`PyMuPDFTextExtractor`.
+    """
+    return PyMuPDFTextExtractor()
+
+
 # =====================================================================
 # Бенчмарк
 # =====================================================================
 
 
-@pytest.mark.skip(reason="activated in phase 5 (ProcessTaskRunner, DocumentIndexPlan)")
 def test_scan_full_1000_pdfs(
     benchmark: Any,
     pdf_corpus: Path,
     scan_docs_count: int,
     bench_event_loop: asyncio.AbstractEventLoop,
     scan_executor: ThreadPoolExecutor,
-    process_runner: Any,
+    process_runner: ProcessTaskRunner,
     event_bus: AsyncEventBus,
     directory_scanner: DirectoryScanner,
     file_hasher: FileHasher,
+    mupdf_extractor: PyMuPDFTextExtractor,
     tmp_path: Path,
 ) -> None:
     """Полное сканирование каталога PDF (по умолчанию 1000 файлов).
 
-    Активируется в **Фазе 5**, когда появятся:
+    Замеряет полный цикл ``ScanPipeline.run_async`` — обход каталога,
+    ленивое хеширование, формирование планов индексации через
+    ``ProcessTaskRunner`` (process-per-task + forkserver), батчевая
+    запись в SQLite через ``SqliteIndexWriter``.
 
-    - ``ProcessTaskRunner`` (Фаза 4);
-    - ``DocumentIndexPlan`` и обновлённые сигнатуры
-      ``TextIndexer.__init__(index_writer=...)``,
-      ``ScanPipeline.__init__(process_runner=..., index_plan_worker=...)``
-      (Фаза 5);
-    - ``build_index_plan_in_subprocess`` (Фаза 5).
-
-    До этого момента тест пропускается через ``pytest.mark.skip``;
-    тело содержит только заглушку, а зависимости от будущего API
-    исключены из импортов модуля (см. блок «Импорты, которые будут
-    восстановлены в Фазе 5» в начале файла).
-
-    Что будет замеряться после активации:
-
-    Полный цикл ``ScanPipeline.run_async`` — обход каталога, ленивое
-    хеширование, извлечение текста через ``ProcessTaskRunner``
-    (process-per-task + forkserver), батчевая запись в SQLite
-    через ``SAVEPOINT``.
-
-    Каждый прогон будет создавать **свежую БД** (см. модульный
-    docstring, раздел «Ключевая особенность замеров»). Без сброса
-    БД второй прогон увидел бы все файлы как ``SKIPPED_UNCHANGED``
-    и завершился бы за секунды.
+    Каждый прогон создаёт **свежую БД** (см. модульный docstring,
+    раздел «Ключевая особенность замеров»). Без сброса БД второй
+    прогон увидел бы все файлы как ``SKIPPED_UNCHANGED`` и
+    завершился бы за секунды.
 
     Датасет PDF переиспользуется между прогонами (session-scoped
     fixture ``pdf_corpus``): метаданные файлов стабильны, что
@@ -590,66 +574,63 @@ def test_scan_full_1000_pdfs(
         scan_docs_count: Ожидаемое количество файлов.
         bench_event_loop: Session-scoped event loop.
         scan_executor: ThreadPoolExecutor для блокирующих операций.
-        process_runner: ProcessTaskRunner (заглушка до Фазы 4).
+        process_runner: ProcessTaskRunner с production-конфигурацией.
         event_bus: AsyncEventBus (не запущен).
         directory_scanner: Сканер каталога.
         file_hasher: Хешер файлов.
+        mupdf_extractor: Экстрактор PyMuPDF (обязательный параметр
+            ``TextIndexer`` и ``ScanPipeline``).
         tmp_path: Функционально-уникальный временный каталог pytest.
     """
-    # Тело метода активируется в Фазе 5. Структура, которую нужно
-    # будет восстановить:
-    #
-    #   counter = itertools.count()
-    #   loop = bench_event_loop
-    #
-    #   def scan_once() -> ScanStatus:
-    #       idx = next(counter)
-    #       db_path = tmp_path / f"scan_{idx:03d}.db"
-    #
-    #       adapter = SQLiteAdapter(str(db_path))
-    #       try:
-    #           DatabaseManager(adapter).ensure_all()
-    #           indexer = TextIndexer(index_writer=adapter)
-    #           pipeline = ScanPipeline(
-    #               db=adapter,
-    #               scanner=directory_scanner,
-    #               hasher=file_hasher,
-    #               indexer=indexer,
-    #               event_bus=event_bus,
-    #               process_runner=process_runner,
-    #               index_plan_worker=build_index_plan_in_subprocess,
-    #               max_hash_workers=4,
-    #               max_extract_workers=6,
-    #               scan_executor=scan_executor,
-    #               document_cache=None,
-    #           )
-    #           progress = loop.run_until_complete(
-    #               pipeline.run_async(
-    #                   rd_directory=str(pdf_corpus),
-    #                   scan_id=idx + 1,
-    #                   correlation_id=f"bench-scan-{idx}",
-    #               )
-    #           )
-    #           return progress.status
-    #       finally:
-    #           adapter.close()
-    #
-    #   status = benchmark.pedantic(scan_once, rounds=3, iterations=1)
-    #   assert status == ScanStatus.COMPLETED
-    #
-    # Соответствующие импорты перечислены в блоке комментариев
-    # в начале модуля. Заглушка ниже сохраняет корректную сигнатуру
-    # теста для pytest (fixtures продолжают разрешаться).
-    _ = (
-        benchmark,
-        pdf_corpus,
-        scan_docs_count,
-        bench_event_loop,
-        scan_executor,
-        process_runner,
-        event_bus,
-        directory_scanner,
-        file_hasher,
-        tmp_path,
-        itertools,  # будет использоваться в scan_once после активации
-    )
+    counter = itertools.count()
+    loop = bench_event_loop
+
+    def scan_once() -> ScanStatus:
+        """Один прогон сканирования на свежей БД.
+
+        Создаёт новый ``SQLiteAdapter``, ``SqliteIndexWriter``,
+        ``TextIndexer`` и ``ScanPipeline`` для текущего прогона.
+        Каждый прогон изолирован: своя БД, свой ``doc_id``-namespace.
+
+        Returns:
+            Итоговый ``ScanStatus`` сканирования.
+        """
+        idx = next(counter)
+        db_path = tmp_path / f"scan_{idx:03d}.db"
+
+        adapter = SQLiteAdapter(str(db_path))
+        try:
+            DatabaseManager(adapter).ensure_all()
+            index_writer = SqliteIndexWriter(adapter)
+            indexer = TextIndexer(
+                text_extractor=mupdf_extractor,
+                index_writer=index_writer,
+                db=adapter,
+            )
+            pipeline = ScanPipeline(
+                db=adapter,
+                scanner=directory_scanner,
+                hasher=file_hasher,
+                text_extractor=mupdf_extractor,
+                indexer=indexer,
+                event_bus=event_bus,
+                process_runner=process_runner,
+                index_plan_worker=build_index_plan_in_subprocess,
+                max_hash_workers=4,
+                max_extract_workers=6,
+                scan_executor=scan_executor,
+                document_cache=None,
+            )
+            progress = loop.run_until_complete(
+                pipeline.run_async(
+                    rd_directory=str(pdf_corpus),
+                    scan_id=idx + 1,
+                    correlation_id=f"bench-scan-{idx}",
+                )
+            )
+            return progress.status
+        finally:
+            adapter.close()
+
+    status = benchmark.pedantic(scan_once, rounds=3, iterations=1)
+    assert status == ScanStatus.COMPLETED

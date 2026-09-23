@@ -38,17 +38,25 @@ Lifespan-обработчики позволяют выполнять асинх
 - ``scan_executor`` — ``ThreadPoolExecutor`` для операций
   сканирования и рендера PDF;
 - ``process_runner`` — ``ProcessTaskRunner`` (process-per-task
-  на контексте forkserver) для извлечения текста PDF в
-  изолированных subprocess.
+  на контексте forkserver) для формирования планов индексации
+  PDF в изолированных subprocess.
 
 ``ProcessTaskRunner`` заменяет прежний ``ProcessPoolExecutor`` для
 ``extract_executor``. Преимущества: изоляция состояния (forkserver),
 устойчивость к сегфолтам PyMuPDF (процесс-per-task), автоматическое
-освобождение ресурсов. Worker-функция ``extract_document_queries``
-передаётся в ``create_components`` как ``Callable`` — это единственная
-точка импорта ``dds_core.subprocess_tasks`` во всём проекте
-(контракт ``subprocess-tasks-isolation``). Метод ``close()`` runner'а
+освобождение ресурсов. Worker-функция
+``build_index_plan_in_subprocess`` передаётся в ``create_components``
+как ``Callable`` — это единственная точка импорта
+``dds_core.subprocess_tasks`` во всём проекте (контракт
+``subprocess-tasks-isolation``). Метод ``close()`` runner'а
 вызывается в shutdown до закрытия БД.
+
+DocumentIndexPlan (Фаза 5, ADR-005):
+Запись планов индексации в БД делегируется ``SqliteIndexWriter``
+(реализация ``IIndexWriter``). ``SqliteIndexWriter`` создаётся
+в ``create_components`` и передаётся в ``TextIndexer``. Ранее
+SQL-строки формировались в ``application/query_builder.py``;
+теперь SQL-специфика сосредоточена в infrastructure-слое.
 
 Фильтрация по метаданным:
 При старте приложения создаются репозитории справочников
@@ -199,10 +207,11 @@ from dds_core.infrastructure.pymupdf_text_extractor import (
     PyMuPDFTextExtractor,
 )
 from dds_core.infrastructure.sqlite_adapter import SQLiteAdapter
+from dds_core.infrastructure.sqlite_index_writer import SqliteIndexWriter
 from dds_core.infrastructure.sqlite_reference_repository import (
     SqliteReferenceRepository,
 )
-from dds_core.subprocess_tasks.pdf_workers import extract_document_queries
+from dds_core.subprocess_tasks.pdf_workers import build_index_plan_in_subprocess
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -280,15 +289,17 @@ def load_config(config_path: str) -> dict:
 def create_components(
     config: dict,
     event_bus: IEventBus,
+    process_runner: ProcessTaskRunner,
+    index_plan_worker: Callable[..., Any],
     scan_executor: Executor | None = None,
-    process_runner: ProcessTaskRunner | None = None,
-    pdf_worker: Callable[..., Any] | None = None,
 ) -> dict:
     """Создаёт все компоненты DDS через dependency injection.
 
     Включая компоненты фильтрации по метаданным, инициализацию
-    справочников из JSON и передачу приоритетного исполнителя
-    subprocess-задач (``process_runner``) в ``ScanOrchestrator``.
+    справочников из JSON, ``SqliteIndexWriter`` для записи планов
+    индексации и передачу исполнителя subprocess-задач
+    (``process_runner``) вместе с worker'ом (``index_plan_worker``)
+    в ``ScanOrchestrator``.
 
     Операции:
 
@@ -305,10 +316,12 @@ def create_components(
     +---+-----------------------------------------------------+
     | 4 | Создание инфраструктурных компонентов:              |
     |   | ``DirectoryScanner``, ``FileHasher``,               |
-    |   | ``PyMuPDFTextExtractor``, ``FTS5SearchBackend``.    |
+    |   | ``PyMuPDFTextExtractor``, ``FTS5SearchBackend``,    |
+    |   | ``SqliteIndexWriter``.                              |
     +---+-----------------------------------------------------+
     | 5 | Создание application-компонентов:                   |
-    |   | ``TextIndexer``, ``SearchEngine``,                  |
+    |   | ``TextIndexer`` (с ``SqliteIndexWriter`` и          |
+    |   | ``IDatabase``), ``SearchEngine``,                   |
     |   | ``ModuleLifecycle``, ``ScanOrchestrator``.          |
     +---+-----------------------------------------------------+
     | 6 | Создание ``DocumentCache`` и передача его в         |
@@ -320,8 +333,8 @@ def create_components(
     | 8 | Передача ``event_bus`` во все компоненты, которые   |
     |   | публикуют события.                                 |
     +---+-----------------------------------------------------+
-    | 9 | Передача ``scan_executor``, ``process_runner`` и     |
-    |   | ``pdf_worker`` в ``ScanOrchestrator``.              |
+    | 9 | Передача ``process_runner`` и ``index_plan_worker`` |
+    |   | в ``ScanOrchestrator``.                             |
     +---+-----------------------------------------------------+
     | 10| Возврат словаря компонентов.                        |
     +---+-----------------------------------------------------+
@@ -329,16 +342,15 @@ def create_components(
     Args:
         config: Словарь конфигурации из ``config.json``.
         event_bus: Шина событий для публикации.
+        process_runner: Исполнитель subprocess-задач
+            (``ProcessTaskRunner``). Передаётся в
+            ``ScanOrchestrator``. Обязателен.
+        index_plan_worker: Picklable-функция формирования плана
+            индексации одного PDF (``build_index_plan_in_subprocess``).
+            Передаётся как ``Callable`` без импорта
+            ``subprocess_tasks`` в application. Обязательна.
         scan_executor: Пул потоков для операций сканирования.
             Если ``None``, используется дефолтный пул.
-        process_runner: Приоритетный исполнитель subprocess-задач
-            (``ProcessTaskRunner``). Передаётся в ``ScanOrchestrator``;
-            если ``None`` — конвейер использует потоковый fallback
-            через ``indexer.prepare_document_queries``.
-        pdf_worker: Picklable-функция извлечения текста одного PDF.
-            Передаётся как ``Callable`` без импорта
-            ``subprocess_tasks`` в application. Обязателен при
-            заданном ``process_runner``.
 
     Returns:
         Словарь созданных компонентов.
@@ -381,9 +393,10 @@ def create_components(
     hasher = FileHasher()
     text_extractor = PyMuPDFTextExtractor()
     search_backend = FTS5SearchBackend(db)
+    index_writer = SqliteIndexWriter(db)
 
     # Application-компоненты
-    indexer = TextIndexer(text_extractor, db)
+    indexer = TextIndexer(text_extractor, index_writer, db)
     search_engine = SearchEngine(search_backend, db)
 
     # Модульный загрузчик и проверка зависимостей
@@ -438,11 +451,11 @@ def create_components(
         indexer=indexer,
         module_lifecycle=module_lifecycle,
         event_bus=event_bus,
+        process_runner=process_runner,
+        index_plan_worker=index_plan_worker,
         scan_executor=scan_executor,
         document_cache=document_cache,
         document_metadata_service=document_metadata_service,
-        process_runner=process_runner,
-        pdf_worker=pdf_worker,
     )
 
     return {
@@ -695,7 +708,8 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
     |    | d. Создать и запустить подписчика логирования.    |
     |    | e. Создать пулы потоков и ``ProcessTaskRunner``.  |
     |    | f. Создать компоненты через ``create_components``|
-    |    |    (передача ``process_runner`` и ``pdf_worker``).|
+    |    |    (передача ``process_runner`` и                  |
+    |    |    ``index_plan_worker``).                          |
     |    | g. Инициализировать модули.                        |
     |    | h. Создать сервис аутентификации.                 |
     |    | i. Парсинг и валидация конфигурации                |
@@ -770,10 +784,10 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
     Примечание (Фаза 4):
         ``ProcessTaskRunner`` создаётся в startup и закрывается
         в shutdown через ``await process_runner.close(...)``.
-        Worker-функция ``extract_document_queries`` импортируется
-        из ``dds_core.subprocess_tasks.pdf_workers`` — это
-        единственная точка импорта ``subprocess_tasks`` во всём
-        проекте (контракт ``subprocess-tasks-isolation``).
+        Worker-функция ``build_index_plan_in_subprocess``
+        импортируется из ``dds_core.subprocess_tasks.pdf_workers``
+        — это единственная точка импорта ``subprocess_tasks``
+        во всём проекте (контракт ``subprocess-tasks-isolation``).
 
     Args:
         config_path: Путь к файлу ``config.json``.
@@ -830,9 +844,9 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
         #                   индексов слов.
         #
         # ProcessTaskRunner — process-per-task исполнитель для
-        # извлечения текста PDF в изолированных subprocess
-        # (forkserver на Linux, spawn на macOS/Windows). Заменяет
-        # прежний ProcessPoolExecutor для ``extract_executor``.
+        # формирования планов индексации PDF в изолированных
+        # subprocess (forkserver на Linux, spawn на macOS/Windows).
+        # Заменяет прежний ProcessPoolExecutor для ``extract_executor``.
         # Метод ``run()`` асинхронный; старт forkserver выполняется
         # в отдельном потоке через ``asyncio.to_thread`` внутри
         # ``ProcessTaskRunner.run`` (обход ограничения Python 3.14).
@@ -848,18 +862,19 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
         print("INFO:     Пулы потоков и ProcessTaskRunner созданы")
 
         # Шаг 6: Создание компонентов с передачей пулов
-        # и приоритетного исполнителя subprocess-задач.
+        # и исполнителя subprocess-задач.
         #
-        # extract_document_queries импортируется здесь — единственная
-        # точка импорта subprocess_tasks во всём проекте (контракт
-        # subprocess-tasks-isolation). Передаётся как pdf_worker;
-        # ScanPipeline вызывает его через process_runner.run(...).
+        # build_index_plan_in_subprocess импортируется здесь —
+        # единственная точка импорта subprocess_tasks во всём
+        # проекте (контракт subprocess-tasks-isolation). Передаётся
+        # как index_plan_worker; ScanPipeline вызывает его через
+        # process_runner.run(...).
         components = create_components(
             config,
             event_bus,
-            scan_executor=scan_executor,
             process_runner=process_runner,
-            pdf_worker=extract_document_queries,
+            index_plan_worker=build_index_plan_in_subprocess,
+            scan_executor=scan_executor,
         )
         print("INFO:     Компоненты инициализированы.")
 
@@ -954,7 +969,7 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
         # ``process_runner`` сохраняется для вызова ``close()``
         # в shutdown; отдельного ``extract_executor`` нет —
         # ``ProcessTaskRunner`` полностью заменяет прежний пул
-        # процессов для извлечения текста.
+        # процессов для формирования планов индексации.
         app.state.components = components
         app.state.auth_service = auth_service
         app.state.api_context = api_context
