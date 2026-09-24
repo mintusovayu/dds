@@ -1,6 +1,3 @@
-# `docs/architecture.md`
-
-```markdown
 ## Обзор
 
 Deep Doc Search (DDS) — расширяемая система полнотекстового поиска
@@ -25,9 +22,18 @@ Deep Doc Search (DDS) — расширяемая система полнотек
 - **Серверная группировка результатов поиска по документу** — одна
   запись в выдаче соответствует одному документу, все страницы
   которого с совпадениями агрегируются в массив ``pages``.
+- **Server-side извлечение терминов подсветки** — термины совпадений
+  извлекаются из сниппетов FTS5 на сервере и передаются клиенту в
+  поле ``pages[i].terms`` ответа ``/api/search``. Клиент не парсит
+  сниппеты и не знает о формате маркеров FTS5 (Фаза 6, ADR-006).
+- **Cache-busting статических ресурсов** — CSS/JS подключаются с
+  query-параметром ``?v={{ build_hash }}``; значение ``build_hash``
+  доступно во всех шаблонах через ``templates.env.globals``
+  (Фаза 6, ADR-006). Динамические темы — см. раздел «Cache-busting
+  тем» (Фаза 7, ADR-007).
 - **Предпросмотр документа с подсветкой совпадений** — растровый
   рендер страницы PDF (PNG) с наложением слоя подсветки
-  для терминов, извлечённых из сниппетов FTS5.
+  для терминов, подготовленных сервером.
 - **Диагностика и коррекция системы координат подсветки** — при
   обнаружении аномальной системы координат (bottom-left с
   перепутанными осями) координаты подсветки автоматически
@@ -53,6 +59,10 @@ Deep Doc Search (DDS) — расширяемая система полнотек
   через ``DDS_USER_<NAME>_PASSWORD`` или пару
   ``_PASSWORD_HASH`` + ``_PASSWORD_SALT``; ``config.json`` исключён
   из репозитория.
+- **Client cleanup (Фаза 7, ADR-007)** — ``AbortController``
+  per-tab для отмены pending fetch, ``<template>`` для клиентского
+  рендеринга строк таблицы, разбиение ``SearchRenderer.renderResults``
+  на оркестратор + 4 хелпера, cache-busting тем.
 
 Дополнительно внедрена **событийная модель** для логирования, мониторинга
 и обновления интерфейса в реальном времени.
@@ -82,16 +92,16 @@ Deep Doc Search (DDS) — расширяемая система полнотек
 │    (search_engine, indexer, scan_orchestrator,  │
 │     scan_pipeline, module_lifecycle,            │
 │     module_loader, dependency_checker,          │
-│     query_builder, document_cache,              │
-│     extract_worker, progress_tracker,           │
+│     document_cache, progress_tracker,           │
 │     timeout_guard, async_utils,                 │
 │     file_name_parser,                           │
 │     document_metadata_service,                  │
 │     metadata_filter_query_builder,              │
 │     reference_data_service,                     │
 │     reference_data_initializer,                 │
-│     text_normalizer,                            │
-│     search_query_normalizer,                    │
+│     query_tokenizer,                            │
+│     index_plan_builder,                         │
+│     snippet_terms_extractor,                    │
 │     highlights_service,                         │
 │     coordinate_diagnostics,                     │
 │     word_index_cache)                           │
@@ -103,47 +113,78 @@ Deep Doc Search (DDS) — расширяемая система полнотек
 ┌──────────────────────▼──────────────────────────┐
 │              infrastructure layer               │
 │    (sqlite_adapter, connection_pool,            │
-│     connection_factory, fts5_search_backend,    │
+│     connection_factory, database,               │
+│     fts5_search_backend, fts5/match_builder,    │
 │     file_scanner, file_hasher,                  │
 │     pymupdf_text_extractor,                     │
 │     event_bus, logging_subscriber,              │
 │     sqlite_reference_repository,                │
-│     database)                                   │
+│     sqlite_index_writer,                        │
+│     process_task_runner)                        │
 │                                                 │
 │    Реализует интерфейсы из domain/interfaces.py │
 └─────────────────────────────────────────────────┘
+                       │
+                       │ subprocess_tasks/ (composition root)
+                       │ — импортирует application + infrastructure
+                       ▼
 ```
 
 ### Единственная точка реализации
 
 Каждая функциональность реализована в одном месте:
 - Полнотекстовый поиск — `fts5_search_backend.py`.
+- Сборка FTS5 MATCH-выражения — `fts5/match_builder.py`.
 - Хеширование файлов — `file_hasher.py`.
 - Извлечение текста, рендер страницы и построение индекса слов —
   `pymupdf_text_extractor.py`.
 - Сканирование каталога — `file_scanner.py`.
 - Запись в БД — `sqlite_adapter.py`.
+- Запись планов индексации — `sqlite_index_writer.py`.
 - Публикация событий — `event_bus.py`.
 - Логирование через события — `logging_subscriber.py`.
+- Выполнение subprocess-задач — `process_task_runner.py`.
 - Безопасность веб-слоя — `dds_web/security.py`.
 - Таймауты блокирующих операций — `timeout_guard.py`.
 - Выполнение блокирующих операций в executor — `async_utils.py`.
 - **Парсинг имени файла** — `dds_core/application/file_name_parser.py`.
-- **Построение условий фильтрации** — `dds_core/application/metadata_filter_query_builder.py`.
-- **Обновление метаданных документов** — `dds_core/application/document_metadata_service.py`.
-- **Доступ к справочникам** — `dds_core/infrastructure/sqlite_reference_repository.py`.
-- **Нормализация текста для поиска** — `dds_core/application/text_normalizer.py`.
-- **Нормализация поискового запроса** — `dds_core/application/search_query_normalizer.py`.
-- **Поиск совпадений для подсветки** — `dds_core/application/highlights_service.py`.
+- **Построение условий фильтрации** —
+  `dds_core/application/metadata_filter_query_builder.py`.
+- **Обновление метаданных документов** —
+  `dds_core/application/document_metadata_service.py`.
+- **Доступ к справочникам** —
+  `dds_core/infrastructure/sqlite_reference_repository.py`.
+- **Нормализация текста для поиска** —
+  `dds_core/domain/text_normalization.py`.
+- **Токенизация поискового запроса** —
+  `dds_core/application/query_tokenizer.py`.
+- **Построение плана индексации** —
+  `dds_core/application/index_plan_builder.py`.
+- **Извлечение терминов подсветки из сниппета** —
+  `dds_core/application/snippet_terms_extractor.py` (Фаза 6, ADR-006).
+- **Поиск совпадений для подсветки** —
+  `dds_core/application/highlights_service.py`.
 - **Диагностика и коррекция системы координат подсветки** —
   `dds_core/application/coordinate_diagnostics.py`.
-- **Кэширование индексов слов** — `dds_core/application/word_index_cache.py`.
+- **Кэширование индексов слов** —
+  `dds_core/application/word_index_cache.py`.
 - **Кэширование текста страниц** — `SearchEngine.get_page_text` в
   `dds_core/application/search_engine.py` (LRU с ключом
   `(doc_id, page, file_hash)`).
 - **Построение имён env-переменных для паролей** —
   `dds_web/lifespan.py::_env_var_name`.
-- **Загрузка паролей из env** — `dds_web/lifespan.py::create_auth_service`.
+- **Загрузка паролей из env** —
+  `dds_web/lifespan.py::create_auth_service`.
+- **Вычисление ``build_hash`` для cache-busting** —
+  `dds_web/pages.py::_compute_build_hash` (Фаза 6, ADR-006).
+- **Управление ``AbortController`` вкладки** —
+  `dds_web/static/js/app.js::window.DDSApp.getAbortController`
+  и `resetAbortController` (Фаза 7, ADR-007).
+- **Отмена pending fetch при смене страницы/режима** —
+  `dds_web/static/js/document.js::DocumentLoader.loadDocument`
+  (Фаза 7, ADR-007).
+- **Смена темы с cache-busting** —
+  `dds_web/static/js/theme_manager.js::applyTheme` (Фаза 7, ADR-007).
 
 ### Событийная модель (Фаза 5)
 
@@ -161,39 +202,40 @@ Deep Doc Search (DDS) — расширяемая система полнотек
 выглядеть как нарушения «идеальной» слоистой архитектуры, но
 оправданы практическими соображениями.
 
-#### `normalize_text`: infrastructure → application
+#### `snippet_terms_extractor`: infrastructure → application
 
-Модуль `dds_core/infrastructure/pymupdf_text_extractor.py`
-импортирует функцию `normalize_text` из
-`dds_core/application/text_normalizer.py`. Формально это нарушает
-направление зависимостей (infrastructure зависит от application).
-
-Оправдание:
-- `normalize_text` — чистая функция без побочных эффектов и
-  внешних зависимостей.
-- Её назначение — быть **единым контрактом нормализации** между
-  инфраструктурой (индексация, построение `WordIndex`),
-  application (поиск, сниппеты) и presentation (подсветка).
-- Дублирование функции в домене или инфраструктуре привело бы
-  к риску рассинхронизации правил нормализации.
-
-#### `extract_worker`: application → infrastructure
-
-Модуль `dds_core/application/extract_worker.py` импортирует
-`PyMuPDFTextExtractor` из
-`dds_core/infrastructure/pymupdf_text_extractor.py`. Это
-осознанное нарушение слоистости, обусловленное требованием
-сериализуемости для `ProcessPoolExecutor`: дочерний процесс не
-может получить доступ к объектам основного процесса, поэтому
-создаёт экстрактор самостоятельно.
+Модуль `dds_core/infrastructure/fts5_search_backend.py` импортирует
+функцию `extract_terms_from_snippet` из
+`dds_core/application/snippet_terms_extractor.py` (Фаза 6, ADR-006).
+Формально это infrastructure → application.
 
 Оправдание:
-- Функция `extract_document_queries` — точка входа для дочернего
-  процесса; она обязана создавать зависимости внутри процесса.
-- Инверсия зависимостей здесь невозможна без усложнения
-  (передача фабрики через pickle, что само по себе проблематично).
-- Замена PDF-библиотеки потребует правки этого модуля и
-  `pymupdf_text_extractor.py` — обе точки известны и локальны.
+- `extract_terms_from_snippet` — чистая функция без побочных эффектов.
+- Её назначение — быть **единой точкой** извлечения терминов подсветки
+  из сниппетов FTS5. Клиент (``search.js``) не парсит сниппеты и
+  не знает о формате маркеров ``[[DDS_HIGHLIGHT_START]]`` /
+  ``[[DDS_HIGHLIGHT_END]]``. Это устраняет протечку FTS5-специфики
+  в presentation layer.
+- Направление infrastructure → application уже легально в проекте
+  (например, `FTS5SearchBackend` импортирует
+  `MetadataFilterQueryBuilder` из application).
+- Помещение экстрактора в domain отклонено (см. ADR-006,
+  альтернатива 4): правило структурное, а не семантическое.
+
+#### `_compute_build_hash` и `templates.env.globals`
+
+Функция `_compute_build_hash` в `dds_web/pages.py` регистрируется
+в `templates.env.globals["build_hash"]` один раз при импорте модуля.
+Значение доступно во всех Jinja2-шаблонах как `{{ build_hash }}`
+без явной передачи в `context={...}` каждого `TemplateResponse`.
+
+Оправдание:
+- Единая точка вычисления `build_hash`: env-переменная
+  `DDS_BUILD_HASH` → короткий git-хеш → fallback `"dev"`.
+- Устраняет дублирование при добавлении новых эндпоинтов,
+  рендерящих HTML.
+- Идиоматично для Jinja2: `env.globals` предназначен для значений,
+  доступных во всех шаблонах.
 
 #### `window.DDSApp` — фасад над `AppState`
 
@@ -202,7 +244,7 @@ Deep Doc Search (DDS) — расширяемая система полнотек
 Вместо расширения области видимости введён публичный фасад
 `window.DDSApp` с методами доступа к per-tab состоянию
 (`getDocumentRecord`, `updateDocumentRecord`, `getActiveDocumentRecord`,
-`incrementLoadSeq`, `getLoadSeq`, `ensureRenderer`).
+`ensureRenderer`, `getAbortController`, `resetAbortController`).
 
 Оправдание:
 - Сохраняет инкапсуляцию: внешние модули не манипулируют
@@ -210,86 +252,61 @@ Deep Doc Search (DDS) — расширяемая система полнотек
 - Позволяет позже изменить внутреннее представление состояния
   без правки всех потребителей.
 
-#### Единый счётчик `_seq` для координации async-операций
+#### `AbortController` вместо `_seq` (Фаза 7, ADR-007)
 
-Каждая вкладка документа имеет счётчик `_seq` в
-`AppState.openDocuments[i]`. Все асинхронные операции (запрос
-PNG-рендера, запрос подсветки, загрузка текста страницы) проверяют
-актуальность счётчика после каждого `Promise`.
+Каждая вкладка документа имеет собственный `AbortController` в
+`AppState.openDocuments[i]._abortController`. Все `fetch` внутри
+одной загрузки страницы получают `signal`. Смена страницы/режима
+вызывает `resetAbortController`: предыдущий контроллер прерывается
+(`abort()`), pending fetch отменяются с `AbortError`.
 
-Оправдание:
-- Устраняет race condition при быстрой смене страниц или режимов
-  просмотра.
-- Предотвращает утечку blob URL (устаревший ответ не создаёт
-  объект).
-- Проще, чем отмена через `AbortController` (не требует
-  поддержки в каждом fetch-вызове).
+До Фазы 7 защита от race condition обеспечивалась счётчиком `_seq`
+(инкрементировался при каждой загрузке; все `.then`/`.catch`
+проверяли актуальность). Механизм работал, но:
 
-#### Публичные методы `refreshHighlights` и `applyTextFallbackState`
-
-Ранее `dds_web/static/js/app.js` и `dds_web/static/js/document.js`
-вызывали приватные методы друг друга
-(`PageRenderer._fetchAndApplyHighlights`, `ViewModeManager._setActive`),
-что нарушало инкапсуляцию. Введены публичные методы:
-
-- `PageRenderer.refreshHighlights(pageNumber, terms)` —
-  инкрементирует `_seq` через фасад `window.DDSApp` и
-  делегирует в приватный `_fetchAndApplyHighlights`.
-- `ViewModeManager.applyTextFallbackState(docId)` — применяет
-  fallback-состояние UI (активна «Текст», «Рендер» заблокирована).
+- проверка дублировалась в 12+ местах;
+- устаревшие fetch продолжали выполняться (нет `abort()`);
+- смена страницы/режима/закрытия вкладки — три разных сценария,
+  каждый вручную инкрементировал `_seq`.
 
 Оправдание:
-- Единая точка контроля инкремента `_seq` — предотвращает
-  двойной инкремент и race condition.
-- Инкапсуляция деталей (внутренний метод остаётся приватным).
-- Публичный API отражает реальные сценарии использования извне.
+- `AbortController` — стандартный Web API.
+- Единый guard `signal.aborted` вместо 12+ `seq !== getLoadSeq`.
+- Устаревшие fetch отменяются мгновенно — экономия сети и CPU.
+- Двухшаговый переход (Фаза 7, шаг 4a → 4b) снизил риск регресса:
+  сначала `AbortController` добавлен параллельно с `_seq`, затем
+  `_seq` удалён после подтверждения smoke-тестами.
 
-#### Отмена `ScanPipeline` через `asyncio.Event`
+#### `<template>` для строк таблицы результатов (Фаза 7, ADR-007)
 
-Механика кооперативной отмены построена на `asyncio.Event`
-(`_cancel_event`), а не на булевом флаге. Воркеры ожидают задачу
-и отправляют результаты через симметричные помощники
-`_wait_task_or_cancel` / `_put_or_cancel`, использующие
-`asyncio.wait` с приоритетом отмены.
-
-Оправдание:
-- Булев флаг требовал опроса в каждой итерации цикла, что
-  приводило к race condition: воркер мог заблокироваться на
-  `await queue.put()` и не увидеть флаг.
-- `asyncio.Event` разблокирует и `get`, и `put` немедленно при
-  установке отмены.
-- Приоритет отмены при одновременной готовности обеих задач
-  (`queue.get()` и `cancel_event.wait()`) предотвращает
-  обработку задачи после отмены.
-
-#### Сентинелы как уникальный тип `_QueueSentinel`
-
-Маркер завершения очереди — экземпляр класса `_QueueSentinel`,
-а не `None`. Это позволяет различить сентинел и сигнал
-кооперативной отмены (который возвращается как `None`).
+`SearchRenderer.renderTable` строит строки через клонирование
+HTML5-`<template>` из `main.html` (`tmpl-search-doc-row`,
+`tmpl-search-page-row`).
 
 Оправдание:
-- При использовании `None` в качестве сентинела оба сигнала
-  совпали бы — воркер не смог бы отличить нормальное завершение
-  от отмены.
-- mypy видит `_QueueSentinel` как конкретный тип, а не абстрактный
-  `object`, что ловит ошибки типизации.
+- Декларативная разметка строки в HTML, а не в JS.
+- `textContent` вместо `escapeHtml` для текстовых вставок —
+  автоматическое экранирование.
+- Кэш парсера браузера: `<template>` парсится один раз при
+  загрузке страницы.
 
-#### Диагностика координат в `HighlightsService`, а не в
-`build_word_index`
+**HTML5-ограничение.** `<template>` содержит `<table><tbody>`
+вокруг `<tr>`: парсер HTML5 в контексте `<div>` игнорирует `<tr>`
+(in body insertion mode, §13.2.6.4.7). При клонировании из
+fragment'а извлекается только `<tr>` через
+`querySelector("tr.search-doc-row")`; обёртка не попадает в
+целевой `<tbody>`.
 
-Диагностика системы координат и трансформация bbox выполняются
-в момент поиска совпадений (`HighlightsService.search_highlights`),
-а не при построении `WordIndex` (в инфраструктурном слое).
+#### Разбиение `renderResults` (Фаза 7, ADR-007)
+
+`SearchRenderer.renderResults` разбит на оркестратор и 4
+module-private хелпера: `renderSearchStatus`, `renderResultsTable`,
+`renderPaginationControls`, `renderEmptyState`.
 
 Оправдание:
-- Кэш `WordIndexCache` работает по единому ключу
-  `(doc_id, page_number, file_hash)` без флага трансформации:
-  раздувание памяти неоправданно (трансформация дешёвая).
-- `ITextDocument` и `build_word_index` остаются чистыми: они не
-  знают о диагностике и работают только с PyMuPDF.
-- Трансформируются только **найденные** слова (обычно единицы),
-  а не все слова страницы — экономия CPU.
+- SRP: каждая функция — одна ответственность.
+- Оркестратор читается как «оглавление» (~15 строк).
+- Порядок DOM-операций сохранён идентично монолитной версии.
 
 ## Структура проекта
 
@@ -299,45 +316,54 @@ dds/
 │   ├── domain/
 │   │   ├── config.py
 │   │   ├── events.py
+│   │   ├── index_plan.py
+│   │   ├── index_writer.py
 │   │   ├── interfaces.py
 │   │   ├── models.py
-│   │   └── reference_repository.py
+│   │   ├── reference_repository.py
+│   │   └── text_normalization.py
 │   ├── application/
 │   │   ├── async_utils.py
-│   │   ├── search_engine.py
+│   │   ├── coordinate_diagnostics.py
+│   │   ├── document_cache.py
+│   │   ├── document_metadata_service.py
+│   │   ├── file_name_parser.py
+│   │   ├── highlights_service.py
+│   │   ├── index_plan_builder.py
 │   │   ├── indexer.py
+│   │   ├── metadata_filter_query_builder.py
+│   │   ├── module_lifecycle.py
+│   │   ├── module_loader.py
+│   │   ├── progress_tracker.py
+│   │   ├── query_tokenizer.py
+│   │   ├── reference_data_initializer.py
+│   │   ├── reference_data_service.py
 │   │   ├── scan_orchestrator.py
 │   │   ├── scan_pipeline.py
-│   │   ├── module_loader.py
-│   │   ├── dependency_checker.py
-│   │   ├── module_lifecycle.py
-│   │   ├── query_builder.py
-│   │   ├── document_cache.py
-│   │   ├── extract_worker.py
-│   │   ├── progress_tracker.py
+│   │   ├── search_engine.py
+│   │   ├── snippet_terms_extractor.py
 │   │   ├── timeout_guard.py
-│   │   ├── file_name_parser.py
-│   │   ├── document_metadata_service.py
-│   │   ├── metadata_filter_query_builder.py
-│   │   ├── reference_data_service.py
-│   │   ├── reference_data_initializer.py
-│   │   ├── text_normalizer.py
-│   │   ├── search_query_normalizer.py
-│   │   ├── highlights_service.py
-│   │   ├── coordinate_diagnostics.py
 │   │   └── word_index_cache.py
-│   └── infrastructure/
-│       ├── sqlite_adapter.py
-│       ├── connection_pool.py
-│       ├── connection_factory.py
-│       ├── database.py
-│       ├── fts5_search_backend.py
-│       ├── file_scanner.py
-│       ├── file_hasher.py
-│       ├── event_bus.py
-│       ├── logging_subscriber.py
-│       ├── pymupdf_text_extractor.py
-│       └── sqlite_reference_repository.py
+│   ├── infrastructure/
+│   │   ├── connection_factory.py
+│   │   ├── connection_pool.py
+│   │   ├── database.py
+│   │   ├── event_bus.py
+│   │   ├── file_hasher.py
+│   │   ├── file_scanner.py
+│   │   ├── fts5/
+│   │   │   ├── __init__.py
+│   │   │   └── match_builder.py
+│   │   ├── fts5_search_backend.py
+│   │   ├── logging_subscriber.py
+│   │   ├── process_task_runner.py
+│   │   ├── pymupdf_text_extractor.py
+│   │   ├── sqlite_adapter.py
+│   │   ├── sqlite_index_writer.py
+│   │   └── sqlite_reference_repository.py
+│   └── subprocess_tasks/
+│       ├── __init__.py
+│       └── pdf_workers.py
 ├── dds_web/
 │   ├── api.py
 │   ├── auth.py
@@ -373,6 +399,8 @@ dds/
 ├── tests/
 │   ├── test_auth_env_password.py
 │   ├── test_document_metadata_batch.py
+│   ├── test_fts5_search_backend.py
+│   ├── test_snippet_terms_extractor.py
 │   ├── test_scan_pipeline_cancellation.py
 │   ├── ... (прочие тесты)
 ├── config.json
@@ -403,7 +431,7 @@ dds/
 1. Чтение конфигурации.
 2. Настройка файлового логирования.
 3. Создание и запуск шины событий и подписчика логирования.
-4. Создание пулов потоков и процессов.
+4. Создание пулов потоков и ``ProcessTaskRunner``.
 5. Создание компонентов через `create_components()`:
    - стандартные компоненты;
    - **репозитории справочников** (`SqliteReferenceRepository` для объектов, дисциплин, типов);
@@ -439,25 +467,28 @@ dds/
    При превышении — принудительная отмена задачи.
 4. Остановка модулей.
 5. **Очистка `WordIndexCache`** (вызов `clear()`).
-6. **Завершение пулов потоков и процессов** через
-   `shutdown(wait=True, cancel_futures=True)`:
-   - `wait=True` — дождаться завершения активных задач;
-   - `cancel_futures=True` — отменить ещё не начатые.
-   Это гарантирует, что фоновые потоки не обратятся к БД
-   после её закрытия.
+6. **Завершение subprocess-задач и пулов потоков**:
+   - `await process_runner.close(shutdown_timeout)` — активные
+     subprocess-задачи получают SIGTERM, через grace — SIGKILL;
+   - `shutdown(wait=True, cancel_futures=True)` для `api_executor`
+     и `scan_executor`:
+     - `wait=True` — дождаться завершения активных задач;
+     - `cancel_futures=True` — отменить ещё не начатые.
+   Это гарантирует, что фоновые потоки и subprocess-задачи не
+   обратятся к БД после её закрытия.
 7. Закрытие БД.
 8. Публикация `ApplicationStopped`.
 9. Остановка подписчика логирования и шины событий.
-10. Очистка глобальных контекстов (`set_context(None)`,
-    `set_auth_service(None)`).
+10. Очистка глобальных контекстов (значения в `app.state`
+    становятся недостижимыми после остановки приложения).
 
-## Разделение пулов потоков и процессов
+## Разделение пулов потоков и subprocess-задач
 
-| Пул | Тип | Назначение | Размер |
+| Пул / компонент | Тип | Назначение | Размер |
 |---|---|---|---|
 | `api_executor` | ThreadPoolExecutor | Веб-запросы | `API_EXECUTOR_MAX_WORKERS` (4) |
 | `scan_executor` | ThreadPoolExecutor | Сканирование, рендер PDF, построение индексов слов | `SCAN_EXECUTOR_MAX_WORKERS` (6) |
-| `extract_executor` | ProcessPoolExecutor | Извлечение текста | `SCAN_EXTRACT_WORKERS` (6) |
+| `ProcessTaskRunner` | process-per-task (forkserver) | Формирование планов индексации PDF | `PROCESS_RUNNER_MAX_CONCURRENT` (6) |
 
 **Важно:** эндпоинты `/render` и `/highlights` выполняют блокирующие
 операции в `scan_executor`, а не в `api_executor`. Это предотвращает
@@ -551,9 +582,9 @@ dds/
 | normalized_text | Нормализованная версия текста для нечувствительного к раскладке поиска |
 
 Нормализация выполняется при индексации с помощью модуля
-`dds_core/application/text_normalizer.py`. Пользовательский запрос
+`dds_core/domain/text_normalization.py`. Пользовательский запрос
 нормализуется и дополняется префиксом колонки через
-`dds_core/application/search_query_normalizer.py`.
+`dds_core/infrastructure/fts5/match_builder.py`.
 
 ### Таблица `module_registry`
 
@@ -653,8 +684,8 @@ dds/
       "file_path": "раздел_01/чертёж_001.pdf",
       "relevance_score": -3.14,
       "pages": [
-        {"page_number": 0, "snippet": "..."},
-        {"page_number": 3, "snippet": "..."}
+        {"page_number": 0, "snippet": "...", "terms": ["...", "..."]},
+        {"page_number": 3, "snippet": "...", "terms": ["..."]}
       ]
     }
   ]
@@ -667,6 +698,11 @@ dds/
 - `limit` и `offset` в запросе также отсчитываются **по документам**.
 - `pages[].page_number` — 0-based, соответствует
   `text_index_fts.page_number`.
+- `pages[].terms` — кортеж уникальных терминов подсветки, извлечённых
+  сервером из сниппета (Фаза 6, ADR-006). Порядок — порядок первого
+  появления; пустой кортеж для виртуальной страницы пустого запроса.
+  Клиент использует готовый список для запроса подсветки и не
+  парсит сниппеты.
 
 **Двухзапросный подход.**
 
@@ -757,7 +793,7 @@ LIMIT ? OFFSET ?
   фильтров.
 - Используется `SELECT DISTINCT d.doc_id, d.file_path`.
 - Каждый документ получает одну «виртуальную» страницу
-  (`page_number=0`, пустой `snippet`).
+  (`page_number=0`, пустой `snippet`, пустой `terms`).
 
 ### Нормализация текста для поиска
 
@@ -769,6 +805,25 @@ LIMIT ? OFFSET ?
    `normalized_text:` к каждому слову или фразе.
 3. **Сниппеты** формируются из колонки `normalized_text` (индекс 3)
    и денормализуются на Python-стороне.
+
+### Термины подсветки (Фаза 6, ADR-006)
+
+При формировании каждого `PageHit` в `FTS5SearchBackend.search`
+выполняется:
+
+1. Денормализация сниппета: `denormalized_snippet = denormalize_text(snippet_raw)`.
+2. Извлечение уникальных терминов подсветки из **денормализованного**
+   сниппета: `page_terms = extract_terms_from_snippet(denormalized_snippet)`.
+3. Сохранение результата в `PageHit.terms: tuple[str, ...]`.
+
+Термины возвращаются в читаемой кириллической форме — той же, что
+отображается пользователю в подсказке (`title`). Клиент не парсит
+сниппеты; он использует `pages[i].terms` напрямую.
+
+Функция `extract_terms_from_snippet` находится в модуле
+`dds_core/application/snippet_terms_extractor.py`. Она покрыта
+23 unit-тестами (`tests/test_snippet_terms_extractor.py`) и 11
+интеграционными (`tests/test_fts5_search_backend.py`).
 
 ### Безопасный рендеринг сниппетов
 
@@ -824,13 +879,72 @@ env-имён логируются WARNING в stdout.
 `ViewModeManager` управляет режимом просмотра документа
 (рендер ↔ текст).
 
+**`AbortController` (Фаза 7, ADR-007).** Каждая вкладка документа
+имеет собственный `AbortController` в записи
+`AppState.openDocuments[i]._abortController`. Все `fetch` в
+`DocumentLoader` и `PageRenderer` получают `signal` от
+контроллера. Смена страницы/режима вызывает
+`window.DDSApp.resetAbortController(docId)`: предыдущий контроллер
+прерывается (`abort()`), pending fetch отменяются с `AbortError`.
+Публичные методы: `window.DDSApp.getAbortController(docId)`,
+`window.DDSApp.resetAbortController(docId)`.
+
+**`<template>` (Фаза 7, ADR-007).** `SearchRenderer.renderTable`
+строит строки таблицы через клонирование HTML5-`<template>` из
+`main.html` (`tmpl-search-doc-row`, `tmpl-search-page-row`).
+Заполнение через `textContent` (автоматическое экранирование).
+Шаблон `tmpl-search-doc-row` оборачивает `<tr>` в `<table><tbody>`
+для корректного парсинга HTML5.
+
+**Разбиение `renderResults` (Фаза 7, ADR-007).**
+`SearchRenderer.renderResults` — оркестратор, вызывает 4
+module-private хелпера: `renderSearchStatus`,
+`renderResultsTable`, `renderPaginationControls`,
+`renderEmptyState`.
+
+### Cache-busting статических ресурсов (Фаза 6, ADR-006)
+
+CSS и JS подключаются с query-параметром `?v={{ build_hash }}`.
+Значение `build_hash` регистрируется один раз в
+`templates.env.globals` (см. `dds_web/pages.py::_compute_build_hash`)
+и доступно во всех шаблонах без передачи в `context`.
+
+Приоритет источников `build_hash`:
+
+1. env-переменная `DDS_BUILD_HASH` (если задана и непуста);
+2. короткий git-хеш `HEAD` (`git rev-parse --short=8 HEAD`);
+3. fallback `"dev"` (для не-git окружений).
+
+Значение обрезается до 16 символов (`_BUILD_HASH_MAX_LENGTH`).
+Вызов `git rev-parse` имеет таймаут 2 секунды
+(`_GIT_REV_PARSE_TIMEOUT_SECONDS`); все ошибки (`FileNotFoundError`,
+`TimeoutExpired`, `OSError`, ненулевой код возврата) подавляются.
+
+### Cache-busting тем (Фаза 7, ADR-007)
+
+Активная тема подключается через `<link id="theme-stylesheet">`.
+Cache-busting тем реализован в
+`dds_web/static/js/theme_manager.js::applyTheme`:
+
+- `window.DDSApp.buildHash` читается в момент вызова `applyTheme`.
+- Значение инициализируется в `app.js::AppInit` из атрибута
+  `data-build-hash` на `#main-init-data` (передаётся из
+  `main.html` через `{{ build_hash }}`).
+- К `href` темы добавляется `?v=<buildHash>`, если строка непуста.
+
+**Исключение.** Inline-скрипт в `base.html` (ранняя установка
+темы до `AppInit`) **не добавляет** `?v=`: `window.DDSApp` на
+этом этапе ещё не создан. Cache-busting вступает в силу после
+`AppInit` — при смене темы пользователем и при явном вызове
+`ThemeManager.initTheme()` после загрузки страницы.
+
 ### Просмотр документа (рендер и подсветка)
 
 Просмотр документа на вкладке реализован как **растровый рендер
 страницы PDF** с наложением слоя подсветки совпадений. Это
 соответствует назначению DDS как инструмента поиска.
 
-#### Два независимых эндпоинта
+#### Три независимых эндпоинта
 
 - **`GET /api/documents/{doc_id}/pages/{page_number}/render?dpi=300`** —
   PNG-рендер страницы.
@@ -860,12 +974,13 @@ env-имён логируются WARNING в stdout.
 `PageRenderer` (создаётся через `createPageRenderer(docId)`) предоставляет
 публичные методы:
 
-- `renderPage(page, options, seq)` — первичный рендер страницы.
-- `refreshHighlights(page, terms)` — пересчёт подсветки. Инкрементирует
-  `_seq` через `window.DDSApp.incrementLoadSeq` и делегирует в
-  приватный `_fetchAndApplyHighlights`. Единственная публичная точка
-  пересчёта подсветки извне (используется `app.js` при переключении
-  чекбокса «Ротация координат»).
+- `renderPage(page, options, signal)` — первичный рендер страницы.
+- `refreshHighlights(page, terms)` — пересчёт подсветки. Вызывает
+  приватный `_fetchAndApplyHighlights` **без передачи `signal`**:
+  пересчёт подсветки не должен прерывать активный PNG-рендер.
+  Единственная публичная точка пересчёта подсветки извне
+  (используется `app.js` при переключении чекбокса «Ротация
+  координат»).
 - `setZoom(value)` / `resetZoom()` — управление zoom.
 - `releaseBlob()` — освобождение blob URL без запуска нового рендера.
 - `cleanup()` — освобождение ресурсов при закрытии вкладки.
@@ -937,12 +1052,29 @@ WARNING.
 Координаты подсветки нормализуются делением на `WordIndex.page_width`
 и `WordIndex.page_height`.
 
-#### Источник терминов для подсветки
+#### Источник терминов для подсветки (Фаза 6, ADR-006)
 
-Термины извлекаются на клиенте из сниппетов FTS5, обрамлённых
-маркерами `[[DDS_HIGHLIGHT_START]]` и `[[DDS_HIGHLIGHT_END]]`.
-Клиент (`search.js`) формирует карту `termsByPage` (номер страницы →
-список терминов) и передаёт её через `window.DDSApp.openDocumentTab`.
+Термины извлекаются на **сервере** при формировании результатов
+поиска (модуль `dds_core/application/snippet_terms_extractor.py`)
+и передаются клиенту в поле `pages[i].terms` ответа `/api/search`.
+
+Клиент не парсит сниппеты: `search.js` формирует карту
+`termsByPage` (номер страницы → список терминов) напрямую из
+`page.terms` и передаёт её через `window.DDSApp.openDocumentTab`
+в параметре `options`.
+
+До Фазы 6 термины извлекались на клиенте через регулярные выражения
+по маркерам `[[DDS_HIGHLIGHT_START]]` / `[[DDS_HIGHLIGHT_END]]`.
+Перенос на сервер устранил:
+
+- протечку FTS5-специфики в presentation layer;
+- дублирование логики извлечения (сервер уже знал о маркерах — он
+  их сам генерирует в `snippet()`);
+- хрупкую JS-логику, не покрытую тестами.
+
+Функция `extract_terms_from_snippet` покрыта 23 unit-тестами
+(`tests/test_snippet_terms_extractor.py`) и 11 интеграционными
+(`tests/test_fts5_search_backend.py`).
 
 #### Визуализация подсветки
 
@@ -992,10 +1124,12 @@ PNG-изображения страницы. Цвет — **бирюзовый**
 
 Каждая вкладка владеет собственным `PageRenderer`
 (фабрика `createPageRenderer(docId)`), который хранит blob URL
-текущего рендера и карту per-page флагов трансформации координат
-(`_transformByPage`). При смене страницы, переходе в текстовый
+текущего рендера, карту per-page флагов трансформации координат
+(`_transformByPage`) и `AbortController` вкладки (через фасад
+`window.DDSApp`). При смене страницы, переходе в текстовый
 режим или закрытии вкладки blob URL освобождается через
-`URL.revokeObjectURL`.
+`URL.revokeObjectURL`; pending fetch прерываются через
+`resetAbortController`.
 
 #### Взаимодействие presentation layer с сервером
 
@@ -1006,36 +1140,38 @@ PNG-изображения страницы. Цвет — **бирюзовый**
 
 ```
 search.js:
-  правый клик → termsByPage из сниппетов
+  правый клик → termsByPage из result.pages[i].terms (готово на сервере)
   window.DDSApp.openDocumentTab(docId, fileName, page, {termsByPage})
 
 app.js::TabManager.openDocumentTab:
-  создание panel и PageRenderer
+  создание panel, PageRenderer, AbortController
   DocumentLoader.loadDocument(..., options, renderer)
 
 document.js::DocumentLoader.loadDocument:
-  fetch метаданных → page_count
+  var controller = resetAbortController(docId)  // прерывает pending fetch
+  var signal = controller.signal
+  fetch метаданных { signal }
   if viewMode === "render":
-    renderer.renderPage(page, options, seq)
+    renderer.renderPage(page, options, signal)
   else:
     renderer.releaseBlob()
-    DocumentLoader._loadPageText(docId, page, container, seq)
+    DocumentLoader._loadPageText(docId, page, container, signal)
   DocumentRenderer.renderPageNavigation(...)
 
 renderer.renderPage:
   _updateTransformCheckboxState(docId, page, options)
-  fetch /render → PNG (в браузерном кэше по ETag)
+  fetch /render { signal } → PNG (в браузерном кэше по ETag)
   создание <img>, применение fit-width по load
   if options.termsByPage[page]:
-    fetch /highlights с apply_transform (или без него)
+    _fetchAndApplyHighlights(page, terms, signal)
     → bbox-ы, applied_transform, transform_confidence
-    → _syncTransformCheckbox(docId, page, seq, applied, confidence)
+    → _syncTransformCheckbox(docId, page, applied, confidence)
     → overlay
 
 app.js::transformCheckbox.change:
   renderer.setTransformForPage(page, checked)
   if terms: renderer.refreshHighlights(page, terms)
-    → incrementLoadSeq → _fetchAndApplyHighlights
+    // без signal — пересчёт подсветки не прерывает PNG-рендер
 
 search.js::_loadFirstPagesBatch (при пустом запросе):
   POST /api/documents/pages/batch с doc_ids
@@ -1046,7 +1182,7 @@ search.js::_loadFirstPagesBatch (при пустом запросе):
 
 | Метод | Путь | Описание |
 |---|---|---|
-| GET | /api/search | Полнотекстовый поиск с серверной группировкой. Параметры: `q`, `object_code`, `discipline_code`, `document_type_code`, `unmatched_only`, `limit` (документы), `offset` (по документам). |
+| GET | /api/search | Полнотекстовый поиск с серверной группировкой. Параметры: `q`, `object_code`, `discipline_code`, `document_type_code`, `unmatched_only`, `limit` (документы), `offset` (по документам). Каждый элемент `pages` содержит поле `terms` (Фаза 6, ADR-006). |
 | GET | /api/documents/{id} | Метаданные документа |
 | GET | /api/documents/{id}/pages/{page} | Текст страницы |
 | POST | /api/documents/pages/batch | **Пакетная загрузка текста страницы для нескольких документов** |
@@ -1099,6 +1235,12 @@ search.js::_loadFirstPagesBatch (при пустом запросе):
 Для пустого запроса (режим «показать все») в столбце «Страницы»
 отображается прочерк «—»; первые страницы документов загружаются
 одним batch-запросом.
+
+**Клиентские `<template>` (Фаза 7, ADR-007).** Разметка строки
+документа и дочерней строки страницы вынесена в HTML5-`<template>`
+в `main.html` (`tmpl-search-doc-row`, `tmpl-search-page-row`).
+Это устраняет построение HTML-строк через `createElement` +
+`innerHTML` в `search.js`.
 
 ## Событийная модель
 
@@ -1155,24 +1297,44 @@ middleware `auto_login_middleware` при успешном создании се
 - `COORD_TEXT_DOMINANCE_THRESHOLD = 0.7` — порог доли «вертикальных»
   слов.
 - `COORD_ASPECT_T = 2.0` — порог отношения сторон.
+- `PROCESS_RUNNER_MAX_CONCURRENT = 6` — лимит одновременно живых
+  subprocess-процессов в `ProcessTaskRunner`.
+- `PROCESS_RUNNER_BATCH_SLOTS = 4` — зарезервированные слоты для
+  batch-задач.
+- `PROCESS_RUNNER_SHUTDOWN_TIMEOUT = 10.0` — таймаут graceful
+  shutdown `ProcessTaskRunner`.
+- `_BUILD_HASH_MAX_LENGTH = 16` (в `dds_web/pages.py`) — максимальная
+  длина `build_hash` для cache-busting (Фаза 6, ADR-006).
+- `_GIT_REV_PARSE_TIMEOUT_SECONDS = 2.0` (в `dds_web/pages.py`) —
+  таймаут вызова `git rev-parse` при вычислении `build_hash`
+  (Фаза 6, ADR-006).
 
-## Сводка по файлу
+## Известные ограничения
 
-| Раздел | Содержание |
-|---|---|
-| Обзор | Добавлены пункты о batch-write метаданных, batch endpoint, LRU-кэше текста, graceful shutdown, env-паролях |
-| Архитектурные принципы | Добавлен компромисс `extract_worker`, `refreshHighlights`/`applyTextFallbackState`, отмена через `asyncio.Event`, `_QueueSentinel` |
-| Структура проекта | Добавлены `async_utils.py`, `auto_login.py`, `test_auth_env_password.py`, `test_document_metadata_batch.py`, `test_scan_pipeline_cancellation.py`, `theme-coffee.css` |
-| Жизненный цикл | Startup: env-пароли; Shutdown: `wait=True, cancel_futures=True` |
-| Таймауты | Добавлено примечание о непрерываемости потоков; `SHUTDOWN_SCAN_TIMEOUT_SECONDS` через `OPERATION_TIMEOUTS["scan.cancel_grace"]` |
-| Схема БД | Убран `idx_documents_file_hash` (дубликат UNIQUE) |
-| Поэтапное сканирование | Фаза 1: отмена через `asyncio.Event`; Фаза 2: batch-write |
-| Поисковый бэкенд | Добавлен research-шаг 3.1 (LIMIT не применим) |
-| Веб-интерфейс → Аутентификация | Управление паролями через env; `config.json` исключён |
-| Веб-интерфейс → Просмотр документа | Публичные API `refreshHighlights`/`applyTextFallbackState`; эндпоинт `/api/documents/pages/batch` |
-| API Endpoints | Добавлен `POST /api/documents/pages/batch` |
-| Событийная модель | Добавлено `AutoLoginPerformed` |
-| Константы | Добавлены `PAGE_TEXT_CACHE_SIZE`, `scan.cancel_grace` |
-```
+- **Read-side SQL** в application (`TextIndexer.get_document_metadata`,
+  `MetadataFilterQueryBuilder.build`, `DocumentCache.load`) —
+  рефакторинг в Фазе 8.
+- **`normalize_search_query`** не экранирует токены со спецсимволами
+  FTS5 (`-`, `+`, `*`). Запрос `EC-423-1` парсится FTS5 как
+  `ec-423-1` → ошибка `no such column: 423`. Фикс — в Фазе 8.
+- **FTS5 `snippet()` при multi-term OR** на многостраничном документе
+  может вернуть сниппет не той страницы. Ограничение FTS5,
+  обойдено в тестах; не влияет на production-поиск по однозначным
+  запросам.
+- **`_stderr_lock`** в `pymupdf_text_extractor.py` — остаётся до
+  переезда `/render` и `/highlights` в subprocess. ADR-001
+  остаётся `accepted` с примечанием.
+- **Inline-скрипт в `base.html`** (ранняя установка темы) не
+  добавляет `?v=` к `href` темы: `window.DDSApp` на этом этапе
+  ещё не создан. Cache-busting тем вступает в силу после
+  `AppInit` (Фаза 7, ADR-007).
+- **`XMLHttpRequest` в `downloadDocument`** не поддерживает
+  `signal` — скачивание файла не отменяется при закрытии вкладки.
+  Приемлемо: скачивание — короткая операция (Фаза 7, ADR-007).
+- **`refreshHighlights` без `signal`** — пересчёт подсветки не
+  должен прерывать активный PNG-рендер. Защита от race —
+  `rec.page !== pageNumber` в `_fetchAndApplyHighlights`
+  (Фаза 7, ADR-007).
+````
 
 ---

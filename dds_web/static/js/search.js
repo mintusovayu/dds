@@ -92,6 +92,79 @@
  * FTS5-специфики в presentation layer и делает логику подсветки
  * устойчивой к изменению формата маркеров.
  *
+ * Разбиение ``renderResults`` (Фаза 7, ADR-007):
+ *
+ * Ранее ``SearchRenderer.renderResults`` (~40 строк) смешивал
+ * пять независимых ответственностей: сохранение состояния,
+ * обновление статус-бара, визуализацию фильтров, управление
+ * контейнерами, рендеринг таблицы и пагинации.
+ *
+ * В Фазе 7 функция разбита на оркестратор и 4 module-private
+ * хелпера:
+ *
+ * +----------------------------------+----------------------------------+
+ * | Компонент                        | Ответственность                  |
+ * +==================================+==================================+
+ * | ``renderSearchStatus``           | Обновление статус-бара и         |
+ * |                                  | визуализации фильтров.           |
+ * +----------------------------------+----------------------------------+
+ * | ``renderResultsTable``           | Делегирование в                  |
+ * |                                  | ``SearchRenderer.renderTable``.  |
+ * +----------------------------------+----------------------------------+
+ * | ``renderPaginationControls``     | Вычисление ``totalPages`` и      |
+ * |                                  | делегирование в                  |
+ * |                                  | ``SearchRenderer.renderPagination``.|
+ * +----------------------------------+----------------------------------+
+ * | ``renderEmptyState``             | Показ сообщения «Ничего не       |
+ * |                                  | найдено», скрытие таблицы.       |
+ * +----------------------------------+----------------------------------+
+ * | ``SearchRenderer.renderResults`` | Оркестратор: вызывает хелперы    |
+ * |                                  | в фиксированном порядке.         |
+ * +----------------------------------+----------------------------------+
+ *
+ * Оркестратор сохраняет **идентичный** порядок DOM-операций, что
+ * и монолитная версия. Наблюдаемое поведение не меняется.
+ *
+ * Использование ``<template>`` (Фаза 7, ADR-007):
+ *
+ * ``SearchRenderer.renderTable`` строит строки таблицы через
+ * клонирование HTML5-``<template>``-элементов, объявленных в
+ * ``main.html``:
+ *
+ * +----------------------------------+----------------------------------+
+ * | Шаблон                           | Назначение                       |
+ * +==================================+==================================+
+ * | ``tmpl-search-doc-row``          | Строка документа в таблице       |
+ * |                                  | результатов.                     |
+ * +----------------------------------+----------------------------------+
+ * | ``tmpl-search-page-row``         | Дочерняя строка страницы         |
+ * |                                  | (внутри раскрытой группы).       |
+ * +----------------------------------+----------------------------------+
+ *
+ * Преимущества перед ``createElement`` + ``innerHTML``:
+ * - разметка в HTML, а не в JS;
+ * - ``textContent`` вместо ``escapeHtml`` — автоматическое
+ *   экранирование для ``fileName``, ``pagesListText``, номеров
+ *   страниц;
+ * - ``innerHTML`` остаётся только для сниппетов, где
+ *   ``escapeAndHighlight`` возвращает безопасную разметку с
+ *   ``<b>`` (результат ``escapeHtml`` + замена маркеров).
+ *
+ * Оборачивание ``<tr>`` в ``<table><tbody>``:
+ *
+ *   Шаблон ``tmpl-search-doc-row`` содержит ``<tr>``, обёрнутый в
+ *   ``<table><tbody>``. Это необходимо: ``<tr>`` — table-элемент,
+ *   и HTML5-парсер игнорирует его в контексте ``<div>`` (in body
+ *   insertion mode). Обёртка переводит парсер в «in table body»
+ *   mode, где ``<tr>`` разрешён. При клонировании из fragment'а
+ *   извлекается **только** ``<tr>`` через
+ *   ``querySelector("tr.search-doc-row")``; обёртка
+ *   ``<table><tbody>`` не попадает в целевой ``<tbody>``.
+ *
+ * Ограничение ``<template>``: он не поддерживает условную логику.
+ * Ветвления (``hasMultiplePages``) выполняются в JS: показать или
+ * удалить кнопку раскрытия через ``style.display`` / ``remove()``.
+ *
  * Пасхалка («большой белый самолет»):
  * Если в поле поиска введена фраза «большой белый самолет»,
  * а в поле объекта — слово «домой», при отправке формы поиска
@@ -116,6 +189,16 @@
  * |                                  | раскрытие групп страниц,         |
  * |                                  | пакетная загрузка первых страниц.|
  * +----------------------------------+----------------------------------+
+ * | ``renderSearchStatus``           | Хелпер: статус-бар + фильтры.    |
+ * +----------------------------------+----------------------------------+
+ * | ``renderResultsTable``           | Хелпер: делегат в renderTable.   |
+ * +----------------------------------+----------------------------------+
+ * | ``renderPaginationControls``     | Хелпер: вычисление totalPages +  |
+ * |                                  | делегат в renderPagination.      |
+ * +----------------------------------+----------------------------------+
+ * | ``renderEmptyState``             | Хелпер: показ «Ничего не         |
+ * |                                  | найдено».                        |
+ * +----------------------------------+----------------------------------+
  * | ``SearchAPI``                    | Взаимодействие с REST API        |
  * |                                  | ``/api/search`` через Fetch.     |
  * +----------------------------------+----------------------------------+
@@ -131,12 +214,18 @@
  *   имеет ``aria-expanded`` и ``aria-controls``.
  * - Термины подсветки приходят с сервера (``pages[i].terms``),
  *   а не извлекаются из сниппетов на клиенте (см. ADR-006).
+ * - ``renderResults`` — оркестратор; хелперы не имеют побочных
+ *   эффектов вне своей зоны ответственности.
+ * - Строки таблицы строятся из ``<template>`` (``main.html``);
+ *   ``textContent`` используется для всех текстовых данных.
  *
  * Зависимости:
  * - ``document.js`` — предоставляет ``DocumentUtils``.
  * - ``filter_coordinator.js`` — предоставляет ``FilterCoordinator``.
  * - ``app.js`` — предоставляет глобальный объект ``DDSApp``.
- * - ``main.html`` — DOM-структура с идентификаторами элементов.
+ * - ``main.html`` — DOM-структура с идентификаторами элементов
+ *   и ``<template>``-элементы (``tmpl-search-doc-row``,
+ *   ``tmpl-search-page-row``).
  * - ``base.css`` — стили ``.snippet``, ``.table``, ``.pagination``,
  *   ``.search-pages-cell``, ``.search-expand-btn``,
  *   ``.search-expand-icon``, ``.search-children-row``,
@@ -360,64 +449,200 @@
     }
 
     /* ==============================================================
-       6. Рендеринг результатов
+       6. Хелперы для SearchRenderer.renderResults
+       ============================================================== */
+
+    // Функции вызываются из SearchRenderer.renderResults, который
+    // объявлен ниже. К моменту фактического вызова (через
+    // performSearch, также определённый ниже) SearchRenderer уже
+    // инициализирован. Прямых top-level вызовов нет.
+
+    /**
+     * Обновляет статус-бар поиска и визуализацию применённых фильтров.
+     *
+     * Единая точка для двух независимых побочных эффектов:
+     * - запись текущего запроса/фильтров/счётчика документов
+     *   в статус-бар (через ``window.DDSApp.updateSearchStatus``);
+     * - подсветка полей фильтров с применёнными кодами
+     *   (через ``FilterCoordinator.applyVisualState``).
+     *
+     * Оба вызова обёрнуты в ``typeof``-проверки: если модуль
+     * не загружен (например, на странице без соответствующего
+     * скрипта) — просто пропускаем.
+     *
+     * @param {Object} data — ответ API: ``{query, total, results}``.
+     * @param {string} actualQuery — фактически использованный
+     *   поисковый запрос.
+     * @param {Object} appliedFilters — фактически применённые
+     *   фильтры: ``{object_code, discipline_code,
+     *   document_type_code, unmatched_only}``.
+     * @private
+     */
+    function renderSearchStatus(data, actualQuery, appliedFilters) {
+        if (typeof window.DDSApp !== "undefined" &&
+            window.DDSApp.updateSearchStatus) {
+            window.DDSApp.updateSearchStatus(
+                actualQuery,
+                data.total,
+                appliedFilters
+            );
+        }
+
+        if (typeof FilterCoordinator !== "undefined" &&
+            typeof FilterCoordinator.applyVisualState === "function") {
+            FilterCoordinator.applyVisualState(appliedFilters);
+        }
+    }
+
+    /**
+     * Делегирует рендеринг таблицы результатов в
+     * ``SearchRenderer.renderTable``.
+     *
+     * Тривиальная обёртка сохранена для симметрии с остальными
+     * хелперами (единый префикс ``render``) и на случай будущих
+     * промежуточных операций (например, показа/скрытия индикатора
+     * загрузки перед заполнением тела таблицы).
+     *
+     * @param {Array} results — массив документов.
+     * @param {boolean} isQueryEmpty — признак пустого запроса.
+     * @private
+     */
+    function renderResultsTable(results, isQueryEmpty) {
+        SearchRenderer.renderTable(results, isQueryEmpty);
+    }
+
+    /**
+     * Вычисляет количество страниц пагинации и делегирует
+     * рендеринг в ``SearchRenderer.renderPagination``.
+     *
+     * Вычисление ``totalPages`` находится здесь, а не в
+     * ``SearchRenderer.renderPagination``: контракт последнего
+     * остаётся прежним (принимает уже готовое число страниц).
+     *
+     * @param {number} total — общее количество документов
+     *   (``data.total``).
+     * @param {number} currentPage — текущая страница (1-based,
+     *   из ``SearchState.currentPage``).
+     * @private
+     */
+    function renderPaginationControls(total, currentPage) {
+        var totalPages = Math.ceil(total / SearchState.resultsPerPage);
+        SearchRenderer.renderPagination(currentPage, totalPages);
+    }
+
+    /**
+     * Показывает сообщение «Ничего не найдено» и скрывает таблицу
+     * результатов.
+     *
+     * Вызывается только из оркестратора при ``data.total === 0``.
+     * Обратная операция (показать таблицу, скрыть сообщение)
+     * выполняется инлайн в оркестраторе: симметричная функция
+     * ``renderNonEmptyState`` не вводится — это две строки, ради
+     * которых отдельная абстракция была бы избыточной.
+     *
+     * @private
+     */
+    function renderEmptyState() {
+        var noResults = document.getElementById("search-no-results");
+        var wrapper = document.getElementById("search-results-wrapper");
+        if (noResults) noResults.classList.remove("hidden");
+        if (wrapper) wrapper.classList.add("hidden");
+    }
+
+    /* ==============================================================
+       7. Рендеринг результатов
        ============================================================== */
 
     var SearchRenderer = {
         /**
-         * Рендерит полные результаты поиска.
+         * Оркестратор рендеринга результатов поиска.
+         *
+         * Последовательность операций (порядок сохранён идентично
+         * монолитной версии до Фазы 7):
+         *
+         * +----+----------------------------------------------------+
+         * | №  | Описание                                           |
+         * +====+====================================================+
+         * | 1  | Сохранить ``data.results`` в                       |
+         * |    | ``SearchState.lastResults`` (для контекстного      |
+         * |    | меню).                                             |
+         * +----+----------------------------------------------------+
+         * | 2  | ``renderSearchStatus`` — статус-бар и фильтры.     |
+         * +----+----------------------------------------------------+
+         * | 3  | Снять ``hidden`` с ``#search-results-container``.  |
+         * +----+----------------------------------------------------+
+         * | 4  | При ``data.total === 0`` — ``renderEmptyState()``  |
+         * |    | и выход.                                           |
+         * +----+----------------------------------------------------+
+         * | 5  | Скрыть ``#search-no-results``, показать            |
+         * |    | ``#search-results-wrapper``.                       |
+         * +----+----------------------------------------------------+
+         * | 6  | ``renderResultsTable`` — заполнение таблицы.       |
+         * +----+----------------------------------------------------+
+         * | 7  | ``renderPaginationControls`` — пагинация.          |
+         * +----+----------------------------------------------------+
          *
          * @param {Object} data — ответ API: ``{query, total, results}``.
-         * @param {string} actualQuery — фактически использованный запрос.
-         * @param {Object} appliedFilters — фактически применённые фильтры.
+         * @param {string} actualQuery — фактически использованный
+         *   запрос.
+         * @param {Object} appliedFilters — фактически применённые
+         *   фильтры.
          */
         renderResults: function (data, actualQuery, appliedFilters) {
-            // Сохранить результаты для последующей обработки
-            // правого клика (формирование termsByPage из
-            // готовых terms, подготовленных сервером).
+            // 1. Сохранить результаты для последующей обработки
+            // правого клика (формирование termsByPage из готовых
+            // terms, подготовленных сервером).
             SearchState.lastResults = data.results || [];
 
-            // Обновляем статус-бар
-            if (typeof window.DDSApp !== "undefined" && window.DDSApp.updateSearchStatus) {
-                window.DDSApp.updateSearchStatus(
-                    actualQuery,
-                    data.total,
-                    appliedFilters
-                );
-            }
+            // 2. Обновляем статус-бар и визуализацию фильтров.
+            renderSearchStatus(data, actualQuery, appliedFilters);
 
-            // Применяем визуальное выделение фильтров
-            if (typeof FilterCoordinator !== "undefined" &&
-                typeof FilterCoordinator.applyVisualState === "function") {
-                FilterCoordinator.applyVisualState(appliedFilters);
-            }
-
-            var container = document.getElementById("search-results-container");
-            var noResults = document.getElementById("search-no-results");
-            var wrapper = document.getElementById("search-results-wrapper");
+            // 3. Показать контейнер результатов.
+            var container = document.getElementById(
+                "search-results-container"
+            );
             if (!container) return;
             container.classList.remove("hidden");
 
+            // 4. Пустое состояние — отдельная ветка с early return.
             if (data.total === 0) {
-                if (noResults) noResults.classList.remove("hidden");
-                if (wrapper) wrapper.classList.add("hidden");
+                renderEmptyState();
                 return;
             }
 
+            // 5. Непустое состояние: скрыть сообщение, показать
+            // контейнер таблицы.
+            var noResults = document.getElementById("search-no-results");
+            var wrapper = document.getElementById("search-results-wrapper");
             if (noResults) noResults.classList.add("hidden");
             if (wrapper) wrapper.classList.remove("hidden");
 
-            var isQueryEmpty = actualQuery === "";
-            this.renderTable(data.results, isQueryEmpty);
+            // 6. Заполнить таблицу результатов.
+            renderResultsTable(data.results, actualQuery === "");
 
-            var totalPages = Math.ceil(
-                data.total / SearchState.resultsPerPage
-            );
-            this.renderPagination(SearchState.currentPage, totalPages);
+            // 7. Отрисовать пагинацию.
+            renderPaginationControls(data.total, SearchState.currentPage);
         },
 
         /**
          * Заполняет тело таблицы сгруппированными по документам строками.
+         *
+         * Использование ``<template>`` (Фаза 7, ADR-007):
+         *   Строки строятся через ``docRowTmpl.content.cloneNode(true)``.
+         *   Шаблон ``tmpl-search-doc-row`` оборачивает ``<tr>`` в
+         *   ``<table><tbody>``, чтобы парсер HTML5 корректно распознал
+         *   table-элемент в контексте ``<template>``; из полученного
+         *   fragment'а извлекается **только** ``<tr>`` через
+         *   ``querySelector("tr.search-doc-row")``. Обёртка
+         *   ``<table><tbody>`` не попадает в целевой ``<tbody>``.
+         *
+         *   Текст заполняется через ``textContent`` (автоматическое
+         *   экранирование). Сниппеты заполняются через ``innerHTML``
+         *   с ``escapeAndHighlight`` (безопасная разметка с ``<b>``).
+         *
+         *   Если шаблоны не найдены (рассинхронизация HTML и JS),
+         *   выводится предупреждение в консоль, функция
+         *   завершается без изменений в DOM.
          *
          * При ``isQueryEmpty === true`` вместо N GET-запросов к
          * ``/api/documents/{id}/pages/0`` отправляется один POST на
@@ -433,6 +658,18 @@
             var tbody = document.getElementById("search-results-body");
             if (!tbody) return;
             tbody.innerHTML = "";
+
+            // Получить шаблоны строк. При отсутствии — early return
+            // (защита от рассинхронизации main.html и search.js).
+            var docRowTmpl = document.getElementById("tmpl-search-doc-row");
+            var pageRowTmpl = document.getElementById("tmpl-search-page-row");
+            if (!docRowTmpl || !pageRowTmpl) {
+                console.warn(
+                    "Шаблоны tmpl-search-doc-row / tmpl-search-page-row " +
+                    "не найдены в DOM. Таблица результатов не построена."
+                );
+                return;
+            }
 
             // Карта «doc_id → контейнер сниппета» для пакетной
             // загрузки первых страниц (используется только при
@@ -482,21 +719,30 @@
                 var childrenContainerId = "search-children-" + sanitizedDocId;
 
                 // ---------- Родительская строка документа ----------
-                var tr = document.createElement("tr");
-                tr.className = "search-doc-row";
+                // Клонируем шаблон. В шаблоне <tr> обёрнут в
+                // <table><tbody> (см. main.html); извлекаем только
+                // <tr>, обёртку не вставляем в целевой tbody.
+                var wrapper = docRowTmpl.content.cloneNode(true);
+                var tr = wrapper.querySelector("tr.search-doc-row");
+                if (!tr) {
+                    console.warn(
+                        "Шаблон tmpl-search-doc-row не содержит " +
+                        "<tr class='search-doc-row'>. Пропуск документа."
+                    );
+                    continue;
+                }
+
                 if (hasMultiplePages) {
                     // Класс для курсора-указателя и подсветки.
                     tr.classList.add("expandable");
                 }
                 tr.dataset.docId = result.doc_id;
-                tr.dataset.expanded = "false";
-                tr.setAttribute("aria-expanded", "false");
+                // data-expanded="false" и aria-expanded="false" уже
+                // присутствуют в шаблоне.
 
-                // Ячейка 1: имя документа (ссылка)
-                var tdDoc = document.createElement("td");
-                var link = document.createElement("a");
-                link.href = "#";
-                link.className = "search-result-link";
+                // Ячейка 1: имя документа (ссылка).
+                // href="#" и class="search-result-link" — из шаблона.
+                var link = tr.querySelector(".search-result-link");
                 link.dataset.docId = result.doc_id;
                 link.dataset.fileName = fileName;
                 // Номер страницы для открытия вкладки свойств
@@ -504,54 +750,34 @@
                 link.dataset.pageNumber = String(minPageNumber);
                 link.textContent = fileName;
                 link.title = filePath || result.doc_id || "";
-                tdDoc.appendChild(link);
 
-                // Контейнер полосы прогресса скачивания (скрыт)
-                var progressContainer = document.createElement("div");
-                progressContainer.className = "download-progress";
-                progressContainer.style.display = "none";
-                var progressBar = document.createElement("div");
-                progressBar.className = "download-progress-bar";
-                progressContainer.appendChild(progressBar);
-                tdDoc.appendChild(progressContainer);
-
-                tr.appendChild(tdDoc);
-
-                // Ячейка 2: количество страниц (кнопка раскрытия, если > 1)
-                var tdPages = document.createElement("td");
-                tdPages.className = "search-pages-cell";
+                // Ячейка 2: количество страниц (кнопка раскрытия,
+                // если > 1). Кнопка в шаблоне изначально
+                // style="display: none".
+                var tdPages = tr.querySelector(".search-pages-cell");
+                var expandBtn = tr.querySelector(".search-expand-btn");
                 if (hasMultiplePages) {
-                    var btn = document.createElement("button");
-                    btn.type = "button";
-                    btn.className = "search-expand-btn";
-                    btn.setAttribute("aria-expanded", "false");
-                    btn.setAttribute("aria-controls", childrenContainerId);
-                    btn.setAttribute(
+                    // Показать кнопку и заполнить текст.
+                    expandBtn.style.display = "";
+                    expandBtn.setAttribute("aria-controls", childrenContainerId);
+                    expandBtn.setAttribute(
                         "aria-label",
                         "Раскрыть страницы документа " + fileName
                     );
-                    // SVG-chevron в единой системе иконок
-                    btn.innerHTML =
-                        '<span class="search-pages-list">' +
-                        escapeHtml(pagesListText) +
-                        "</span>" +
-                        '<svg xmlns="http://www.w3.org/2000/svg" ' +
-                        '     viewBox="0 0 24 24" ' +
-                        '     class="icon icon--xs search-expand-icon" ' +
-                        '     aria-hidden="true">' +
-                        '  <polyline points="9 18 15 12 9 6"></polyline>' +
-                        "</svg>";
-                    tdPages.appendChild(btn);
+                    // aria-expanded="false" — из шаблона.
+                    var pagesList = tr.querySelector(".search-pages-list");
+                    pagesList.textContent = pagesListText;
                 } else {
+                    // Кнопка не нужна — удалить; заменить содержимое
+                    // ячейки на простой текст.
+                    expandBtn.remove();
                     tdPages.textContent = pagesListText;
                 }
-                tr.appendChild(tdPages);
 
-                // Ячейка 3: сниппет страницы с наименьшим номером
-                var tdSnippet = document.createElement("td");
-                tdSnippet.className = "search-snippet-cell";
-                var snippetDiv = document.createElement("div");
-                snippetDiv.className = "snippet";
+                // Ячейка 3: сниппет страницы с наименьшим номером.
+                var snippetDiv = tr.querySelector(
+                    ".search-snippet-cell .snippet"
+                );
                 if (isQueryEmpty) {
                     // Заполнение контейнера отложенной пакетной
                     // загрузкой. Ссылка сохраняется в Map для
@@ -560,12 +786,14 @@
                 } else if (minSnippet) {
                     snippetDiv.innerHTML = this.escapeAndHighlight(minSnippet);
                 }
-                tdSnippet.appendChild(snippetDiv);
-                tr.appendChild(tdSnippet);
 
+                // Вставить готовую строку в тело таблицы.
                 tbody.appendChild(tr);
 
                 // ---------- Дочерняя строка-контейнер ----------
+                // Контейнер <tr class="search-children-row"> создаётся
+                // программно (не через <template>), так как его
+                // <td colspan="3"> и id динамические.
                 if (hasMultiplePages) {
                     var trChild = document.createElement("tr");
                     trChild.className = "search-children-row";
@@ -582,17 +810,22 @@
 
                     for (var j = 0; j < pages.length; j++) {
                         var page = pages[j];
-                        var pageRow = document.createElement("div");
-                        pageRow.className = "search-page-row";
+
+                        // Клонируем шаблон дочерней строки страницы.
+                        // Здесь проблем с парсингом нет: <div> внутри
+                        // <template> разрешён в «in body» mode.
+                        var pageFragment = pageRowTmpl.content.cloneNode(true);
+                        var pageRow = pageFragment.querySelector(
+                            ".search-page-row"
+                        );
                         pageRow.dataset.pageNumber = String(page.page_number);
 
-                        var pageNum = document.createElement("span");
-                        pageNum.className = "search-page-number";
+                        var pageNum = pageFragment.querySelector(
+                            ".search-page-number"
+                        );
                         pageNum.textContent = "Стр. " + (page.page_number + 1);
-                        pageRow.appendChild(pageNum);
 
-                        var pageSnippet = document.createElement("div");
-                        pageSnippet.className = "snippet";
+                        var pageSnippet = pageFragment.querySelector(".snippet");
                         if (isQueryEmpty) {
                             // Аналогично родительской строке:
                             // контейнер попадёт в Map для пакетной
@@ -605,9 +838,8 @@
                                 page.snippet || ""
                             );
                         }
-                        pageRow.appendChild(pageSnippet);
 
-                        childContainer.appendChild(pageRow);
+                        childContainer.appendChild(pageFragment);
                     }
 
                     tdChild.appendChild(childContainer);
@@ -1147,7 +1379,7 @@
     };
 
     /* ==============================================================
-       7. Контроллер поиска
+       8. Контроллер поиска
        ============================================================== */
 
     /**
@@ -1240,7 +1472,7 @@
     }
 
     /* ==============================================================
-       8. Инициализация и привязка обработчиков
+       9. Инициализация и привязка обработчиков
        ============================================================== */
 
     function initSearch() {
@@ -1261,7 +1493,7 @@
     }
 
     /* ==============================================================
-       9. Экспорт для внешних модулей
+       10. Экспорт для внешних модулей
        ============================================================== */
 
     if (typeof window !== "undefined") {
@@ -1271,7 +1503,7 @@
     }
 
     /* ==============================================================
-       10. Запуск инициализации
+       11. Запуск инициализации
        ============================================================== */
 
     if (document.readyState === "loading") {

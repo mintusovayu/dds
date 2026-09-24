@@ -57,9 +57,16 @@
 #
 # См. также:
 #   - docs/architecture-decisions/README.md (правила ADR)
-#   - ADR-002 (Remove Service Locator)  — записи Фазы 2
-#   - ADR-005 (DocumentIndexPlan)       — записи Фазы 5
-#   - ADR-006 (Server-side Terms)       — записи Фазы 6
+#   - ADR-002 (Remove Service Locator)   — записи Фазы 2 (удалены
+#                                          из YAML в Фазе 4 по grace)
+#   - ADR-003 (Domain Text Normalization) — записи Фазы 3 (удалены
+#                                          из YAML в Фазе 6 по grace)
+#   - ADR-004 (ProcessTaskRunner)        — запись Фазы 4 (удалена
+#                                          из YAML в Фазе 6 по grace)
+#   - ADR-005 (DocumentIndexPlan)        — записи Фазы 5 (удалены
+#                                          из YAML в Фазе 7 по grace)
+#   - ADR-006 (Server-side Terms)        — записей нет
+#   - ADR-007 (Client cleanup)           — записей нет (только JS/HTML)
 #
 # =====================================================================
 # ПРАВИЛА ВЕДЕНИЯ ФАЙЛА:
@@ -84,59 +91,17 @@
 #    удалением следует запустить check_module_compatibility.py.
 #
 # =====================================================================
+# ПРИМЕЧАНИЕ О ФАЗЕ 7 (ADR-007, Client cleanup):
+#
+#   Новых записей в этом файле не добавлено. Фаза 7 затронула
+#   исключительно presentation layer (JavaScript и HTML-шаблоны):
+#   `dds_web/static/js/{app,document,search,theme_manager}.js`,
+#   `dds_web/templates/main.html`. Python-символы ядра не удалялись
+#   и не добавлялись. ``dds_modules/`` не затронуты.
+#
+#   Записи Фазы 5 (4 шт.) удалены из файла в Фазе 7 в соответствии
+#   с grace-периодом (5 + 2 = 7). Актуальных записей нет.
+# =====================================================================
 
 entries:
-
-  # ===================================================================
-  # Фаза 5 — DocumentIndexPlan (ADR-005).
-  #
-  # Устранение SQL-строк из application-слоя. Формирование SQL
-  # перенесено в infrastructure (``SqliteIndexWriter``); application
-  # работает с доменной моделью ``DocumentIndexPlan``.
-  #
-  # Все записи — ``direct_removal``: внешние модули из
-  # ``dds_modules/`` не используют внутренние символы ядра
-  # (SQL-хелперы и методы индексатора — часть ядра DDS).
-  #
-  # Примечание (Фаза 6): записи Фаз 3 и 4 удалены из файла
-  # в соответствии с grace-периодом (2 фазы). См. ADR-003
-  # и ADR-004.
-  # ===================================================================
-
-  - symbol: dds_core.application.query_builder.build_document_queries
-    type: direct_removal
-    removed_in_phase: 5
-    module_users: []
-    note: >
-      Заменено на dds_core.application.index_plan_builder.build_index_plan
-      (формирование доменной модели DocumentIndexPlan) и
-      dds_core.infrastructure.sqlite_index_writer.SqliteIndexWriter
-      (формирование SQL и запись). См. ADR-005 (DocumentIndexPlan).
-
-  - symbol: dds_core.application.indexer.TextIndexer.prepare_document_queries
-    type: direct_removal
-    removed_in_phase: 5
-    module_users: []
-    note: >
-      Заменено на dds_core.application.indexer.TextIndexer.prepare_index_plan
-      (возвращает DocumentIndexPlan вместо list[tuple[str, tuple]]).
-      См. ADR-005.
-
-  - symbol: dds_core.application.indexer.TextIndexer.write_documents_batch
-    type: direct_removal
-    removed_in_phase: 5
-    module_users: []
-    note: >
-      Заменено на dds_core.application.indexer.TextIndexer.write_index_plans
-      (принимает list[DocumentIndexPlan], делегирует в IIndexWriter).
-      См. ADR-005.
-
-  - symbol: dds_core.subprocess_tasks.pdf_workers.extract_document_queries
-    type: direct_removal
-    removed_in_phase: 5
-    module_users: []
-    note: >
-      Заменено на dds_core.subprocess_tasks.pdf_workers.build_index_plan_in_subprocess
-      (возвращает DocumentIndexPlan вместо list[tuple[str, tuple]]).
-      Порядок аргументов изменён: abs_file_path — последний, для
-      согласованности с build_index_plan. См. ADR-005.
+  # (пусто)

@@ -31,6 +31,22 @@ subprocess, headless Chromium эмулирует пользовательски�
 |                                | разделов, смена темы оформления.       |
 +--------------------------------+----------------------------------------+
 
+Проверки Фазы 7 (ADR-007):
+--------------------------
+
+- ``test_theme_switch_adds_cache_busting`` — после смены темы
+  ``href`` активного stylesheet содержит ``?v=<buildHash>``.
+  Cache-busting реализован в ``ThemeManager.applyTheme``; значение
+  ``buildHash`` передаётся из ``#main-init-data.dataset.buildHash``
+  через ``window.DDSApp``.
+- ``test_rapid_page_switch_no_errors`` — быстрое переключение
+  режимов «Рендер ↔ Текст» не оставляет JS-ошибок в консоли.
+  Проверяет стабильность ``AbortController`` (Фаза 7, ADR-007):
+  pending fetch прерываются с ``AbortError``, который тихо
+  игнорируется в ``.catch``.
+- ``test_document_highlight_visible`` — расширен явной проверкой
+  количества элементов подсветки (``.page-render-highlight``).
+
 Методология
 -----------
 - **Sync Playwright API.** Smoke-тесты последовательны (не требуют
@@ -123,6 +139,34 @@ _DOC_RENDER_TIMEOUT_MS = 15000
 _HIGHLIGHT_TIMEOUT_MS = 15000
 """Таймаут ожидания появления подсветки совпадений (мс)."""
 
+_RAPID_SWITCH_ITERATIONS = 8
+"""Количество быстрых переключений режима в тесте устойчивости
+к race condition (``test_rapid_page_switch_no_errors``).
+
+Значение 8 выбрано как компромисс: достаточно для воспроизведения
+конкурентных fetch (AbortController прерывает pending-запросы),
+но не настолько большое, чтобы тест занимал много времени.
+"""
+
+_RAPID_SWITCH_SETTLE_MS = 1500
+"""Таймаут ожидания завершения всех pending-операций после
+последнего переключения (мс).
+
+После серии быстрых кликов приложение должно дождаться
+завершения последнего fetch (или его отмены) до проверки
+консольных ошибок.
+"""
+
+_RAPID_SWITCH_CLICK_DELAY_MS = 80
+"""Пауза между кликами при быстром переключении режимов (мс).
+
+Небольшая пауза нужна, чтобы клики регистрировались как отдельные
+события (без неё Playwright может «схлопнуть» их в один).
+Значение 80 мс достаточно: оно меньше типичного времени ответа
+``/render`` (~200–500 мс), поэтому переключения остаются
+«быстрыми» с точки зрения race condition.
+"""
+
 
 # =====================================================================
 # Приватные helpers
@@ -206,6 +250,34 @@ def _wait_for_search_hit(
     raise RuntimeError(
         f"Документ не появился в поиске по {query!r} за {timeout}s. Последняя ошибка: {last_error}"
     )
+
+
+def _get_build_hash(page: Page) -> str:
+    """Возвращает ``buildHash`` из фасада ``window.DDSApp``.
+
+    Значение инициализируется в ``AppInit`` (``app.js``) из атрибута
+    ``data-build-hash`` элемента ``#main-init-data``. Используется
+    ``ThemeManager.applyTheme`` для cache-busting тем.
+
+    Операции:
+
+    +---+-----------------------------------------------------+
+    | № | Описание                                            |
+    +===+=====================================================+
+    | 1 | Вызов ``page.evaluate`` для чтения                  |
+    |   | ``window.DDSApp.buildHash``.                        |
+    +---+-----------------------------------------------------+
+    | 2 | Возврат строки (пустая, если поле недоступно).      |
+    +---+-----------------------------------------------------+
+
+    Args:
+        page: Playwright-страница с загруженным ``app.js``.
+
+    Returns:
+        Строка ``buildHash`` или пустая строка, если
+        ``window.DDSApp`` ещё не инициализирован.
+    """
+    return page.evaluate("() => (window.DDSApp && window.DDSApp.buildHash) || ''")
 
 
 # =====================================================================
@@ -668,7 +740,10 @@ def test_document_highlight_visible(
     Проверяет:
         - overlay-слой ``.page-render-overlay`` присутствует;
         - внутри overlay есть хотя бы один прямоугольник
-          ``.page-render-highlight`` (бирюзовый, см. ``base.css``).
+          ``.page-render-highlight`` (бирюзовый, см. ``base.css``);
+        - количество элементов подсветки больше нуля (явная
+          проверка после ожидания видимости — регресс-защита
+          от изменений в рендере, см. Фаза 7, ADR-007).
 
     Термин для подсветки берётся из сниппета FTS5 при открытии
     вкладки; для seeded-документа это :data:`_PDF_SEARCH_TERM`.
@@ -697,6 +772,112 @@ def test_document_highlight_visible(
     # 4. Ожидание подсветки.
     highlight = panel.locator(".page-render-highlight").first
     highlight.wait_for(state="visible", timeout=_HIGHLIGHT_TIMEOUT_MS)
+
+    # 5. Явная проверка количества элементов подсветки.
+    #    После wait_for(state="visible") минимум один элемент уже
+    #    виден, но явный count делает тест самодокументированным
+    #    и защищает от возможных регрессий в рендере (например,
+    #    если логика видимости будет изменена).
+    highlight_count = panel.locator(".page-render-highlight").count()
+    assert highlight_count > 0, f"Подсветка не отображается (найдено элементов: {highlight_count})"
+
+
+def test_rapid_page_switch_no_errors(
+    admin_page: Page,
+    seeded_document: dict[str, str],
+) -> None:
+    """Быстрое переключение режимов не оставляет JS-ошибок.
+
+    Проверяет стабильность ``AbortController`` (Фаза 7, ADR-007):
+    при быстрой смене режима «Рендер ↔ Текст» каждый
+    ``DocumentLoader.loadDocument`` вызывает
+    ``resetAbortController`` и прерывает pending fetch предыдущей
+    загрузки. ``AbortError`` обрабатывается тихо (в ``.catch``
+    первая строка — ``if (error.name === "AbortError") return;``)
+    и не попадает ни в ``console`` (``type=error``), ни в
+    uncaught exceptions (``pageerror``).
+
+    Сценарий:
+
+    +---+-----------------------------------------------------+
+    | № | Описание                                            |
+    +===+=====================================================+
+    | 1 | Открытие вкладки документа через правый клик.       |
+    +---+-----------------------------------------------------+
+    | 2 | Подписка на ``console`` и ``pageerror`` события.    |
+    +---+-----------------------------------------------------+
+    | 3 | Серия быстрых переключений режима                    |
+    |   | (``_RAPID_SWITCH_ITERATIONS`` раз).                  |
+    +---+-----------------------------------------------------+
+    | 4 | Пауза ``_RAPID_SWITCH_SETTLE_MS`` — завершение      |
+    |   | всех pending-операций (успех или отмена).           |
+    +---+-----------------------------------------------------+
+    | 5 | Проверка: список console-ошибок и uncaught          |
+    |   | exceptions пуст.                                     |
+    +---+-----------------------------------------------------+
+
+    Примечание о выборе сценария:
+        ``seeded_document`` содержит одну страницу PDF, поэтому
+        пагинация недоступна. Быстрое переключение режимов даёт
+        тот же эффект с точки зрения race condition: каждый клик
+        инициирует новый ``loadDocument`` → новый
+        ``resetAbortController`` → прерывание pending fetch.
+
+    Args:
+        admin_page: Авторизованная страница.
+        seeded_document: Метаданные seeded-документа.
+    """
+    # 1. Открытие вкладки документа.
+    admin_page.fill("#search-input", seeded_document["search_term"])
+    admin_page.click("#search-form button[type=submit]")
+    admin_page.wait_for_selector(".search-result-link", timeout=5000)
+    admin_page.locator(".search-result-link").first.click(button="right")
+
+    panel_id = f"doc-{seeded_document['doc_id']}"
+    panel = admin_page.locator(f"[data-panel-id='{panel_id}']")
+    panel.wait_for(state="visible", timeout=5000)
+
+    switch = panel.locator(".page-view-switch")
+    switch.wait_for(state="visible", timeout=5000)
+
+    render_btn = switch.locator('button[data-view-mode="render"]')
+    text_btn = switch.locator('button[data-view-mode="text"]')
+
+    # 2. Подписки на ошибки. Собираются в локальные списки.
+    #
+    # ``console`` — сообщения с ``type="error"`` (JS-ошибки,
+    # логируемые через ``console.error``). ``pageerror`` —
+    # uncaught exceptions (необработанные промисы, синтаксические
+    # ошибки в обработчиках).
+    console_errors: list[str] = []
+    page_errors: list[str] = []
+
+    def _on_console(msg: Any) -> None:
+        if msg.type == "error":
+            console_errors.append(msg.text)
+
+    def _on_pageerror(exc: Any) -> None:
+        page_errors.append(str(exc))
+
+    admin_page.on("console", _on_console)
+    admin_page.on("pageerror", _on_pageerror)
+
+    # 3. Серия быстрых переключений.
+    for i in range(_RAPID_SWITCH_ITERATIONS):
+        # Альтернируем: рендер → текст → рендер → текст ...
+        if i % 2 == 0:
+            text_btn.click()
+        else:
+            render_btn.click()
+        admin_page.wait_for_timeout(_RAPID_SWITCH_CLICK_DELAY_MS)
+
+    # 4. Пауза — дать всем pending-операциям завершиться
+    #    (успех или отмена через AbortError).
+    admin_page.wait_for_timeout(_RAPID_SWITCH_SETTLE_MS)
+
+    # 5. Проверка отсутствия ошибок.
+    assert not page_errors, f"Обнаружены необработанные исключения: {page_errors}"
+    assert not console_errors, f"Обнаружены JS-ошибки в консоли: {console_errors}"
 
 
 # =====================================================================
@@ -805,4 +986,104 @@ def test_theme_switch_changes_stylesheet(admin_page: Page) -> None:
         }""",
         arg=original_href,
         timeout=5000,
+    )
+
+
+def test_theme_switch_adds_cache_busting(admin_page: Page) -> None:
+    """Смена темы добавляет ``?v=<buildHash>`` к ``href`` stylesheet.
+
+    Проверяет Фазу 7 (ADR-007): cache-busting тем реализован в
+    ``ThemeManager.applyTheme`` — к ``href`` активного stylesheet
+    добавляется query-параметр ``?v=<buildHash>``, если
+    ``window.DDSApp.buildHash`` содержит непустую строку.
+
+    Сценарий:
+
+    +---+-----------------------------------------------------+
+    | № | Описание                                            |
+    +===+=====================================================+
+    | 1 | Открытие панели настроек.                           |
+    +---+-----------------------------------------------------+
+    | 2 | Переход в раздел «Интерфейс».                       |
+    +---+-----------------------------------------------------+
+    | 3 | Ожидание готовности ``#theme-stylesheet`` и         |
+    |   | ``window.DDSApp.buildHash``.                        |
+    +---+-----------------------------------------------------+
+    | 4 | Смена темы на отличную от текущей.                  |
+    +---+-----------------------------------------------------+
+    | 5 | Проверка: ``href`` содержит ``?v=<buildHash>``.     |
+    +---+-----------------------------------------------------+
+
+    Примечание:
+        Если ``window.DDSApp.buildHash`` пуст (например, при
+        запуске без git-репозитория, когда fallback — ``"dev"``),
+        параметр ``?v=dev`` всё равно добавляется. Проверка
+        требует непустого ``buildHash``: в smoke-окружении
+        ``build_hash`` гарантированно устанавливается
+        (fallback ``"dev"``).
+
+    Args:
+        admin_page: Авторизованная страница.
+    """
+    # 1. Открытие панели настроек.
+    admin_page.click("#activity-settings")
+    admin_page.wait_for_selector("#settings-overlay", timeout=5000)
+
+    # 2. Переход в раздел «Интерфейс».
+    admin_page.click(".settings-nav-item[data-section='interface']")
+    admin_page.wait_for_selector("#settings-theme", timeout=5000)
+
+    # 3. Ожидание готовности: buildHash доступен через фасад.
+    build_hash = _get_build_hash(admin_page)
+    assert build_hash, (
+        "window.DDSApp.buildHash пуст — cache-busting тем не может "
+        "быть проверен. Проверьте регистрацию build_hash в "
+        "templates.env.globals и передачу data-build-hash на "
+        "#main-init-data."
+    )
+
+    # 4. Выбор темы, отличной от текущей.
+    options = admin_page.eval_on_selector(
+        "#settings-theme",
+        "sel => Array.from(sel.options).map(o => o.value)",
+    )
+    assert options, "Список тем пуст"
+
+    current_theme = admin_page.evaluate(
+        """() => {
+            const link = document.getElementById('theme-stylesheet');
+            if (!link) return '';
+            const m = link.href.match(/theme-([a-zA-Z0-9-]+)\\.css/);
+            return m ? m[1] : '';
+        }"""
+    )
+
+    target_value: str | None = None
+    for opt in options:
+        if opt and opt != current_theme:
+            target_value = opt
+            break
+    assert target_value, "Не найдена тема, отличная от текущей"
+
+    admin_page.select_option("#settings-theme", target_value)
+
+    # 5. Ожидание: href содержит ?v=<buildHash>.
+    admin_page.wait_for_function(
+        """(expected_hash) => {
+            const link = document.getElementById('theme-stylesheet');
+            if (!link) return false;
+            return link.href.indexOf('?v=' + expected_hash) !== -1;
+        }""",
+        arg=build_hash,
+        timeout=5000,
+    )
+
+    # Дополнительная проверка на Python-стороне.
+    final_href = admin_page.get_attribute("#theme-stylesheet", "href")
+    assert final_href is not None
+    assert f"?v={build_hash}" in final_href, (
+        f"Ожидался ?v={build_hash} в href, получено: {final_href}"
+    )
+    assert f"theme-{target_value}.css" in final_href, (
+        f"Ожидалась тема theme-{target_value}.css в href, получено: {final_href}"
     )

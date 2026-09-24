@@ -444,17 +444,17 @@ def test_transform_matrix(
     )
 
     assert flip is expected_flip, f"flip={flip!r}, ожидался {expected_flip!r}"
-    assert (
-        confidence == expected_confidence
-    ), f"confidence={confidence!r}, ожидался {expected_confidence!r}"
+    assert confidence == expected_confidence, (
+        f"confidence={confidence!r}, ожидался {expected_confidence!r}"
+    )
     if expect_diagnose_called:
-        assert (
-            len(spy.calls) == 1
-        ), f"diagnose_word_index должен быть вызван 1 раз, фактически {len(spy.calls)}"
+        assert len(spy.calls) == 1, (
+            f"diagnose_word_index должен быть вызван 1 раз, фактически {len(spy.calls)}"
+        )
     else:
-        assert (
-            len(spy.calls) == 0
-        ), f"diagnose_word_index не должен вызываться, фактически {len(spy.calls)} раз(а)"
+        assert len(spy.calls) == 0, (
+            f"diagnose_word_index не должен вызываться, фактически {len(spy.calls)} раз(а)"
+        )
 
 
 # =====================================================================
@@ -666,6 +666,6 @@ def test_diagnose_not_called_when_manual_transform(
     # Явный apply_transform=False.
     service.search_highlights(index, ["alpha"], apply_transform=False)
 
-    assert (
-        len(spy.calls) == 0
-    ), "diagnose_word_index не должен вызываться при ручном apply_transform"
+    assert len(spy.calls) == 0, (
+        "diagnose_word_index не должен вызываться при ручном apply_transform"
+    )

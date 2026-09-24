@@ -360,9 +360,9 @@ def test_close_kills_stubborn_worker() -> None:
             start = time.monotonic()
             await runner.close()
             elapsed = time.monotonic() - start
-            assert (
-                elapsed < 3.0
-            ), f"close() с упрямым worker'ом занял {elapsed:.2f}с, ожидалось < 3.0"
+            assert elapsed < 3.0, (
+                f"close() с упрямым worker'ом занял {elapsed:.2f}с, ожидалось < 3.0"
+            )
             with pytest.raises((RuntimeError, asyncio.CancelledError)):
                 await task
         finally:

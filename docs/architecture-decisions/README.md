@@ -1,4 +1,3 @@
-# `docs/architecture-decisions/README.md`
 # Architecture Decision Records (ADR) журнал DDS
 
 Журнал архитектурных решений Deep Doc Search. Каждая запись (ADR)
@@ -21,7 +20,9 @@ commit-истории и чатам.
   для остальных слоёв;
 - `Queue.put` обёрнут в `_safe_put` с явным `pickle.dumps`;
 - `forkserver` вместо `fork` на Linux;
-- `?v={{ build_hash }}` через `env.globals`, а не `app.state`.
+- `?v={{ build_hash }}` через `env.globals`, а не `app.state`;
+- `AbortController` вместо счётчика `_seq` для клиентской защиты
+  от race condition.
 
 Без журнала такие решения выглядят как произвольные. С журналом —
 как результат анализа альтернатив. Любая попытка «упростить» их
@@ -76,6 +77,7 @@ ADR-NNN-<kebab-case-name>.md
 - `ADR-001-temporary-stderr-lock.md`
 - `ADR-004-process-task-runner.md`
 - `ADR-005-document-index-plan.md`
+- `ADR-007-client-abort-controller.md`
 
 Особый случай: `ADR-000-template.md` — шаблон, не является записью.
 
@@ -238,6 +240,8 @@ deprecation-запись может ссылаться на ADR, вводящи�
 | ADR-003 | Domain Text Normalization | accepted | 3 |
 | ADR-004 | ProcessTaskRunner | accepted | 4 |
 | ADR-005 | DocumentIndexPlan | accepted | 5 |
+| ADR-006 | Server-side Terms | accepted | 6 |
+| ADR-007 | Client AbortController | accepted | 7 |
 
 ### Superseded
 
@@ -319,4 +323,45 @@ ADR не заменяет их; он **дополняет** их ответом 
 2. **Явная связь с `exceptions.yaml`.** У Nygard нет такого
    механизма; в DDS он встроен для связи архитектурных решений
    с автоматическими проверками CI.
+````
+
+---
+
+## Сводка изменений
+
+| Раздел | Изменение |
+|---|---|
+| **Раздел 1 «Зачем это в DDS»** | В список примеров неочевидных решений добавлена строка:<br>`- \`AbortController\` вместо счётчика \`_seq\` для клиентской защиты от race condition.` |
+| **Раздел 3 «Именование файлов»** | В список примеров добавлена строка:<br>`- \`ADR-007-client-abort-controller.md\`` |
+| **Раздел 9 «Индекс ADR»** → «Принятые» | В таблицу добавлена строка:<br>`| ADR-007 | Client AbortController | accepted | 7 |` |
+
+**Не тронуто:** разделы 2, 4, 5, 6, 7, 8, 10, 11, 12 — идентичны оригиналу. Заголовки, таблицы, комментарии, ссылки — без изменений.
+
+**Опечатка в запросе.** Файл называется `README.md` (не `READMY.md`). Использовано корректное имя.
+
+---
+
+## Проверка
+
+```fish
+cd ~/workspace/dds; and source .venv/bin/activate.fish
+
+echo "=== grep AbortController ==="
+grep -n "AbortController" docs/architecture-decisions/README.md
+# Ожидание: 1 строка (раздел 1)
+
+echo "=== grep ADR-007 ==="
+grep -n "ADR-007" docs/architecture-decisions/README.md
+# Ожидание: 2 строки (раздел 3 и раздел 9)
+
+echo "=== Структура ==="
+grep -c "^## " docs/architecture-decisions/README.md
+# Ожидание: 12 (разделы 1-12)
 ```
+
+**Ожидание:**
+- `AbortController` — 1 совпадение.
+- `ADR-007` — 2 совпадения.
+- 12 разделов уровня `##`.
+
+---

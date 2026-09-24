@@ -715,9 +715,9 @@ def test_cancelled_error_propagates_to_caller(
     _run(_body())
 
     progress = pipeline.get_progress()
-    assert (
-        progress.status == ScanStatus.INTERRUPTED
-    ), f"Ожидался статус INTERRUPTED, получен {progress.status!r}"
+    assert progress.status == ScanStatus.INTERRUPTED, (
+        f"Ожидался статус INTERRUPTED, получен {progress.status!r}"
+    )
 
 
 def test_cooperative_cancel_sets_interrupted_status(
@@ -760,9 +760,9 @@ def test_cooperative_cancel_sets_interrupted_status(
 
     progress = _run(_body())
 
-    assert (
-        progress.status == ScanStatus.INTERRUPTED
-    ), f"Ожидался статус INTERRUPTED, получен {progress.status!r}"
+    assert progress.status == ScanStatus.INTERRUPTED, (
+        f"Ожидался статус INTERRUPTED, получен {progress.status!r}"
+    )
 
 
 def test_cancel_stops_workers_before_all_files_processed(
@@ -865,9 +865,9 @@ def test_new_run_resets_cancel_state(
         )
 
     progress = _run(_second_run())
-    assert (
-        progress.status == ScanStatus.COMPLETED
-    ), f"Второй запуск завершился со статусом {progress.status!r}, ожидался COMPLETED"
+    assert progress.status == ScanStatus.COMPLETED, (
+        f"Второй запуск завершился со статусом {progress.status!r}, ожидался COMPLETED"
+    )
 
 
 def test_cancel_before_run_async_is_noop(

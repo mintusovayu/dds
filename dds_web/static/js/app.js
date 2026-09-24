@@ -110,15 +110,17 @@
  * | Расширение ``AppState``          | В записи ``openDocuments``       |
  * |                                  | добавлены поля ``options``,      |
  * |                                  | ``renderer``, ``viewMode``,      |
- * |                                  | ``_seq``, ``navAllPages`` и      |
- * |                                  | ``pageCount``.                   |
+ * |                                  | ``navAllPages`` и ``pageCount``. |
+ * |                                  | Поле ``_seq`` (защита от race)   |
+ * |                                  | было добавлено в Фазе 4 и        |
+ * |                                  | удалено в Фазе 7 (ADR-007) при   |
+ * |                                  | переходе на ``AbortController``. |
  * +----------------------------------+----------------------------------+
  * | Фасад ``window.DDSApp``          | Добавлены методы                  |
  * |                                  | ``getDocumentRecord``,            |
  * |                                  | ``updateDocumentRecord``,         |
- * |                                  | ``getActiveDocumentRecord``,      |
- * |                                  | ``incrementLoadSeq``,             |
- * |                                  | ``getLoadSeq`` и ``ensureRenderer``.|
+ * |                                  | ``getActiveDocumentRecord`` и     |
+ * |                                  | ``ensureRenderer``.               |
  * |                                  | Обеспечивают доступ к per-tab    |
  * |                                  | состоянию из ``document.js``     |
  * |                                  | без прямого доступа к ``AppState``|
@@ -145,12 +147,6 @@
  * |                                  | ``disabled`` и устанавливается    |
  * |                                  | по результату авто-диагностики    |
  * |                                  | сервера (см. ``document.js``).    |
- * |                                  | При переключении сохраняется      |
- * |                                  | per-page флаг в                   |
- * |                                  | ``renderer._transformByPage``,    |
- * |                                  | инкрементируется ``_seq`` и       |
- * |                                  | пересчитывается подсветка без     |
- * |                                  | перезагрузки PNG-рендера.         |
  * +----------------------------------+----------------------------------+
  * | Унификация чекбокс-метки         | Класс ``.doc-nav-filter``         |
  * |                                  | переименован в                    |
@@ -192,19 +188,65 @@
  * |                                  | ``renderer.refreshHighlights(    |
  * |                                  | page, terms)`` вместо приватного |
  * |                                  | ``_fetchAndApplyHighlights``.    |
- * |                                  | Публичный метод инкрементирует   |
- * |                                  | ``_seq`` через фасад             |
- * |                                  | ``window.DDSApp`` и делегирует   |
- * |                                  | в приватный, обеспечивая         |
- * |                                  | защиту от race condition.        |
  * +----------------------------------+----------------------------------+
- * | Удалён локальный инкремент       | В обработчике ``transformCheckbox``|
- * | ``_seq``                         | убран прямой вызов               |
- * |                                  | ``window.DDSApp.incrementLoadSeq``|
- * |                                  | — инкремент перенесён внутрь     |
- * |                                  | ``refreshHighlights`` (единая    |
- * |                                  | точка контроля).                 |
+ *
+ * Cache-busting тем (Фаза 7, ADR-007):
+ *
  * +----------------------------------+----------------------------------+
+ * | Изменение                        | Описание                         |
+ * +==================================+==================================+
+ * | Чтение ``build_hash``            | В ``AppInit`` из                 |
+ * |                                  | ``#main-init-data.dataset.buildHash``|
+ * |                                  | читается строка build_hash.      |
+ * +----------------------------------+----------------------------------+
+ * | Экспорт ``window.DDSApp.buildHash``| Публичное поле обновляется     |
+ * |                                  | в ``AppInit`` после чтения.      |
+ * +----------------------------------+----------------------------------+
+ * | Использование в ``ThemeManager``  | ``applyTheme`` добавляет        |
+ * |                                  | ``?v=<buildHash>`` к href темы.  |
+ * +----------------------------------+----------------------------------+
+ *
+ * ``AbortController`` для отмены fetch (Фаза 7, ADR-007):
+ *
+ * +----------------------------------+----------------------------------+
+ * | Изменение                        | Описание                         |
+ * +==================================+==================================+
+ * | Поле ``_abortController``        | Добавлено в каждую запись        |
+ * | в записи вкладки                 | ``AppState.openDocuments``.      |
+ * |                                  | Один контроллер на вкладку.      |
+ * +----------------------------------+----------------------------------+
+ * | ``getAbortController(docId)``    | Возвращает существующий          |
+ * |                                  | контроллер или создаёт новый,    |
+ * |                                  | если запись не имела его.        |
+ * +----------------------------------+----------------------------------+
+ * | ``resetAbortController(docId)``  | Прерывает все pending fetch      |
+ * |                                  | вкладки, создаёт свежий          |
+ * |                                  | контроллер, возвращает его.      |
+ * |                                  | Вызывается в ``loadDocument``    |
+ * |                                  | при смене страницы/режима.       |
+ * +----------------------------------+----------------------------------+
+ * | ``abort()`` при закрытии         | В ``closeDocumentTab`` перед     |
+ * | вкладки                          | ``renderer.cleanup()``           |
+ * |                                  | вызывается ``abort()`` —         |
+ * |                                  | устаревшие fetch прерываются.    |
+ * +----------------------------------+----------------------------------+
+ *
+ * Удаление ``_seq`` (Фаза 7, ADR-007, шаг 4b):
+ *
+ *   До Фазы 7 защита от race condition обеспечивалась счётчиком
+ *   ``_seq`` (инкрементировался при каждой загрузке, все async-ответы
+ *   проверяли актуальность). В Фазе 7 (шаг 4a) ``AbortController``
+ *   добавлен **параллельно** с ``_seq``: pending fetch прерываются
+ *   через ``resetAbortController`` при смене страницы/режима.
+ *
+ *   На шаге 4b (текущий) ``_seq`` **полностью удалён** из ``app.js``
+ *   и ``document.js``: удалены методы ``incrementLoadSeq`` /
+ *   ``getLoadSeq`` и поле ``_seq`` из записи вкладки; все
+ *   ``_seq``-проверки в ``document.js`` заменены на ``signal.aborted``.
+ *
+ *   Дополнительная защита для случая ``refreshHighlights``
+ *   (пересчёт подсветки без передачи ``signal``) — проверка
+ *   ``rec.page !== pageNumber`` в ``document.js``.
  *
  * Примечание:
  * Инициализация темы оформления выполняется на более раннем этапе
@@ -244,9 +286,9 @@
  * | ``getDocumentRecord``            | Публичный API для доступа к      |
  * | ``updateDocumentRecord``         | per-tab состоянию из             |
  * | ``getActiveDocumentRecord``      | ``document.js`` (фасад над       |
- * | ``incrementLoadSeq``             | ``AppState``).                   |
- * | ``getLoadSeq``                   |                                  |
- * | ``ensureRenderer``               |                                  |
+ * | ``ensureRenderer``               | ``AppState``).                   |
+ * | ``getAbortController``           |                                  |
+ * | ``resetAbortController``         |                                  |
  * +----------------------------------+----------------------------------+
  * | ``AppInit``                      | Инициализация приложения.        |
  * +----------------------------------+----------------------------------+
@@ -262,12 +304,11 @@
  *   модулей; внутренние детали (``TabManager``, ``AppState``)
  *   не экспортируются напрямую.
  * - Per-tab состояние (renderer, blob URL, zoom, viewMode, options,
- *   navAllPages, pageCount, счётчик загрузок) хранится в записях
+ *   navAllPages, pageCount, ``AbortController``) хранится в записях
  *   ``AppState.openDocuments``; доступ из других модулей — только
  *   через фасад ``window.DDSApp``.
- * - Обработчик чекбокса «Ротация координат» использует только
- *   публичный API renderer (``refreshHighlights``), не затрагивая
- *   приватные методы (``_fetchAndApplyHighlights``).
+ * - ``AbortController`` — единственный механизм отмены pending
+ *   fetch (Фаза 7, ADR-007, шаг 4b).
  *
  * Зависимости:
  * - ``ui_state_manager.js``, ``sse.js``, ``document.js``,
@@ -288,6 +329,29 @@
        ============================================================== */
 
     var MAX_OPEN_TABS = 10;
+
+    /**
+     * Короткий идентификатор сборки для cache-busting статических
+     * ресурсов (Фаза 7, ADR-007).
+     *
+     * Инициализируется в :func:`AppInit` из атрибута
+     * ``data-build-hash`` элемента ``#main-init-data``
+     * (передаётся из ``main.html``, где доступен через
+     * ``templates.env.globals``).
+     *
+     * Используется ``ThemeManager.applyTheme`` для добавления
+     * query-параметра ``?v=<buildHash>`` к ``href`` активной
+     * темы. Это устраняет использование устаревшей версии CSS
+     * из браузерного кеша после пересборки.
+     *
+     * Начальное значение — пустая строка. После ``AppInit``
+     * содержит либо hash (``"dev"`` в не-git окружении, либо
+     * короткий git-хеш), либо пустую строку, если атрибут
+     * отсутствует.
+     *
+     * @type {string}
+     */
+    var _buildHash = "";
 
     /* ==============================================================
        2. Импорт внешних модулей
@@ -318,9 +382,10 @@
      *   ``createPageRenderer(docId)``. Хранит ``_blobUrl``,
      *   ``_zoom``, флаг fit-width и др.
      * - ``viewMode`` — текущий режим: ``"render"`` или ``"text"``.
-     * - ``_seq`` — счётчик асинхронных операций вкладки.
-     *   Используется для защиты от race condition при быстрой
-     *   смене страниц и режимов.
+     * - ``_abortController`` — ``AbortController`` вкладки
+     *   (Фаза 7, ADR-007). Прерывает pending fetch при смене
+     *   страницы/режима/закрытии вкладки. Единственный механизм
+     *   отмены pending fetch (шаг 4b: ``_seq`` удалён).
      * - ``navAllPages`` — режим навигации: ``true`` = все
      *   страницы; ``false`` = только страницы с совпадениями.
      * - ``pageCount`` — общее количество страниц документа.
@@ -602,7 +667,7 @@
                 options: options || null,
                 renderer: renderer,
                 viewMode: viewMode,
-                _seq: 0,
+                _abortController: new AbortController(),
                 navAllPages: true,
                 pageCount: undefined,
             });
@@ -635,8 +700,9 @@
             // 2. Пересчитывается подсветка для текущей страницы
             //    через публичный ``renderer.refreshHighlights`` —
             //    без перезагрузки PNG-рендера. Публичный метод
-            //    инкрементирует ``_seq`` (защита от race condition)
-            //    и делегирует в приватный ``_fetchAndApplyHighlights``.
+            //    делегирует в приватный ``_fetchAndApplyHighlights``
+            //    с ``signal = undefined`` (пересчёт подсветки не
+            //    должен прерывать активный PNG-рендер).
             //
             // Если для страницы нет терминов, запрос не отправляется:
             // чекбокс в этом случае отключён (см. логику
@@ -655,10 +721,9 @@
                         recTransform.options.termsByPage[page]) || [];
                     if (terms.length === 0) return;
 
-                    // _seq инкрементируется внутри refreshHighlights
-                    // (публичный метод). Прямой вызов приватного
-                    // _fetchAndApplyHighlights запрещён — нарушает
-                    // инкапсуляцию модуля document.js.
+                    // refreshHighlights — публичный метод renderer'а.
+                    // Прямой вызов приватного _fetchAndApplyHighlights
+                    // запрещён — нарушает инкапсуляцию document.js.
                     recTransform.renderer.refreshHighlights(page, terms);
                 });
             }
@@ -675,6 +740,13 @@
          * запись из ``AppState.openDocuments``. При закрытии
          * активной вкладки переключается на вкладку поиска.
          *
+         * Перед ``cleanup()`` вызывается ``abort()`` активного
+         * ``AbortController`` (Фаза 7, ADR-007): pending fetch
+         * вкладки прерываются. Это предотвращает обработку
+         * устаревших ответов в закрытой вкладке (например,
+         * обновление несуществующих DOM-элементов в ``.then``
+         * обработчиках).
+         *
          * @param {string} tabId — идентификатор вкладки (``doc-{docId}``).
          */
         closeDocumentTab: function (tabId) {
@@ -690,6 +762,9 @@
             var docId = tabId.replace("doc-", "");
             var rec = window.DDSApp.getDocumentRecord(docId);
             if (rec) {
+                if (rec._abortController) {
+                    rec._abortController.abort();
+                }
                 if (rec.renderer) {
                     rec.renderer.cleanup();
                 }
@@ -1029,15 +1104,29 @@
      * - Доступа к per-tab состоянию
      *   (``getDocumentRecord`` / ``updateDocumentRecord`` /
      *   ``getActiveDocumentRecord``).
-     * - Управления счётчиком загрузок
-     *   (``incrementLoadSeq`` / ``getLoadSeq``).
      * - Гарантированного наличия ``renderer`` у вкладки
      *   (``ensureRenderer``).
+     * - Доступа к ``buildHash`` для cache-busting тем (Фаза 7).
+     * - Управления ``AbortController`` вкладки
+     *   (``getAbortController`` / ``resetAbortController``).
      *
      * Модуль ``document.js`` использует эти методы для доступа
      * к состоянию вкладки, не нарушая инкапсуляцию ``AppState``.
      */
     window.DDSApp = {
+        /**
+         * Короткий идентификатор сборки для cache-busting
+         * статических ресурсов (Фаза 7, ADR-007).
+         *
+         * Начальное значение — пустая строка. Обновляется в
+         * :func:`AppInit` из ``#main-init-data.dataset.buildHash``.
+         * Используется ``ThemeManager.applyTheme`` для добавления
+         * ``?v=<buildHash>`` к ``href`` активной темы.
+         *
+         * @type {string}
+         */
+        buildHash: _buildHash,
+
         updateSearchStatus: updateSearchStatus,
         startScanMonitoring: startScanMonitoring,
         setSearchIconActive: setSearchIconActive,
@@ -1105,33 +1194,6 @@
         },
 
         /**
-         * Инкрементирует per-tab счётчик загрузок и возвращает
-         * новое значение. Используется для защиты от race condition
-         * при быстрой смене страниц и режимов.
-         *
-         * @param {string} docId — идентификатор документа.
-         * @returns {number} — новое значение счётчика (0, если
-         *   запись не найдена).
-         */
-        incrementLoadSeq: function (docId) {
-            var rec = this.getDocumentRecord(docId);
-            if (!rec) return 0;
-            rec._seq = (rec._seq || 0) + 1;
-            return rec._seq;
-        },
-
-        /**
-         * Возвращает текущее значение счётчика загрузок вкладки.
-         *
-         * @param {string} docId — идентификатор документа.
-         * @returns {number}
-         */
-        getLoadSeq: function (docId) {
-            var rec = this.getDocumentRecord(docId);
-            return rec ? (rec._seq || 0) : 0;
-        },
-
-        /**
          * Гарантирует наличие ``renderer`` в записи о документе.
          * Если ``renderer`` отсутствует (например, запись создана
          * до правки или обходным путём), создаётся через
@@ -1149,6 +1211,60 @@
             }
             return rec.renderer;
         },
+
+        /**
+         * Возвращает ``AbortController`` вкладки (Фаза 7, ADR-007).
+         *
+         * Если контроллер отсутствует в записи (например, запись
+         * создана до правки или обходным путём) — создаётся новый.
+         * Это обеспечивает обратную совместимость с кодом, который
+         * ожидает наличие ``_abortController``.
+         *
+         * Используется ``document.js`` для передачи ``signal`` в
+         * ``fetch`` без сброса контроллера (например,
+         * ``refreshHighlights`` — пересчёт подсветки без
+         * прерывания активного рендера).
+         *
+         * @param {string} docId — идентификатор документа.
+         * @returns {AbortController|null} — контроллер вкладки или
+         *   ``null``, если запись не найдена.
+         */
+        getAbortController: function (docId) {
+            var rec = this.getDocumentRecord(docId);
+            if (!rec) return null;
+            if (!rec._abortController) {
+                rec._abortController = new AbortController();
+            }
+            return rec._abortController;
+        },
+
+        /**
+         * Сбрасывает ``AbortController`` вкладки (Фаза 7, ADR-007).
+         *
+         * Прерывает все pending fetch, связанные с текущим
+         * контроллером (через ``abort()``), и создаёт свежий
+         * контроллер. Возвращает новый контроллер.
+         *
+         * Вызывается в ``DocumentLoader.loadDocument`` при смене
+         * страницы/режима: устаревшие fetch прерываются, а новые
+         * получают ``signal`` от свежего контроллера.
+         *
+         * Если запись не найдена — возвращает ``null`` без побочных
+         * эффектов.
+         *
+         * @param {string} docId — идентификатор документа.
+         * @returns {AbortController|null} — свежий контроллер или
+         *   ``null``, если запись не найдена.
+         */
+        resetAbortController: function (docId) {
+            var rec = this.getDocumentRecord(docId);
+            if (!rec) return null;
+            if (rec._abortController) {
+                rec._abortController.abort();
+            }
+            rec._abortController = new AbortController();
+            return rec._abortController;
+        },
     };
 
     /* ==============================================================
@@ -1161,6 +1277,21 @@
         var scanStatus = initData ? initData.dataset.scanStatus : "idle";
         var username = initData ? initData.dataset.username : "";
         var userRole = initData ? initData.dataset.role : "user";
+
+        // Шаг 1a: Чтение build_hash для cache-busting статических
+        // ресурсов (Фаза 7, ADR-007).
+        //
+        // window.DDSApp создан в IIFE **до** вызова AppInit,
+        // поэтому поле buildHash в объекте инициализировано пустой
+        // строкой. Здесь обновляем его актуальным значением из DOM.
+        //
+        // Если атрибут data-build-hash отсутствует или пуст —
+        // оставляем пустую строку: ThemeManager.applyTheme
+        // в этом случае не добавляет ?v= к href темы.
+        _buildHash = initData ? (initData.dataset.buildHash || "") : "";
+        if (window.DDSApp) {
+            window.DDSApp.buildHash = _buildHash;
+        }
 
         // Шаг 2: Инициализация UIStateManager.
         if (typeof UIStateManager !== "undefined") {

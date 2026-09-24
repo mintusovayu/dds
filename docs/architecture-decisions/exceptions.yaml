@@ -42,7 +42,7 @@
 #   rationale:          обязательно для permanent — обоснование
 #
 # См. также: docs/architecture-decisions/README.md (правила
-#            жизненного цикла), ADR-004, ADR-005.
+#            жизненного цикла), ADR-004, ADR-005, ADR-006.
 # =====================================================================
 
 
@@ -68,8 +68,9 @@ root_packages:
 #
 # Обоснование выбора forbidden-контрактов вместо layers-контрактов:
 # infrastructure импортирует отдельные shared-helper'ы из application
-# (например, MetadataFilterQueryBuilder) — это допустимо и не должно
-# ложно срабатывать. Forbidden-контракты описывают точные запреты.
+# (например, MetadataFilterQueryBuilder, snippet_terms_extractor) —
+# это допустимо и не должно ложно срабатывать. Forbidden-контракты
+# описывают точные запреты.
 # ---------------------------------------------------------------------
 contracts:
 
@@ -127,9 +128,11 @@ contracts:
   #
   # Примечание: infrastructure → application НЕ запрещён этим
   # контрактом. Например, FTS5SearchBackend импортирует
-  # MetadataFilterQueryBuilder из application — это допустимо,
-  # так как класс является helper'ом построения SQL-условий
-  # фильтрации, а не реализацией конкретного интерфейса.
+  # MetadataFilterQueryBuilder (построение SQL-условий фильтрации)
+  # и extract_terms_from_snippet (извлечение терминов подсветки,
+  # Фаза 6, ADR-006) из application — это допустимо, так как оба
+  # модуля являются shared-helper'ами, а не реализациями интерфейсов
+  # domain.
   # -------------------------------------------------------------------
   - name: infrastructure-isolation
     description: "Infrastructure layer isolation"
@@ -149,9 +152,9 @@ contracts:
   #
   # Пакет легально импортирует application и infrastructure: worker'ы
   # создают PyMuPDFTextExtractor локально в дочернем процессе и
-  # вызывают application-логику (build_document_queries в Фазе 4,
-  # build_index_plan в Фазе 5). Это единственное место в проекте,
-  # где такое сочетание разрешено.
+  # вызывают application-логику (build_index_plan — Фаза 5, ADR-005;
+  # ранее build_document_queries, удалена в Фазе 5). Это единственное
+  # место в проекте, где такое сочетание разрешено.
   #
   # Единственная точка доступа — dds_web.lifespan (composition root
   # основного процесса). Исключение зафиксировано в ignore_imports
@@ -193,14 +196,15 @@ contracts:
   #                                      runner в worker создал бы цикл.
   #
   # Доменные типы (models), Protocol-ы (interfaces), dataclass-события
-  # (events), константы (config), функции нормализации
-  # (text_normalization) — **не запрещены**. Они не несут состояния
+  # (events), константы (config), правила нормализации
+  # (text_normalization), план индексации (index_plan) и интерфейс
+  # записи (index_writer) — **не запрещены**. Они не несут состояния
   # и безопасны при передаче в forkserver-процесс. Более того, они
   # попадают в worker **транзитивно** через application-модуль
-  # (query_builder) и infrastructure-модуль (pymupdf_text_extractor),
-  # которые разрешены контрактом 4. Запрет этих доменных модулей
-  # потребовал бы исключать весь application-слой — противоречие
-  # цели контракта.
+  # (index_plan_builder) и infrastructure-модуль
+  # (pymupdf_text_extractor), которые разрешены контрактом 4. Запрет
+  # этих доменных модулей потребовал бы исключать весь
+  # application-слой — противоречие цели контракта.
   #
   # Разрешение на импорт application-логики:
   #   - dds_core.application.index_plan_builder.build_index_plan
@@ -238,6 +242,13 @@ contracts:
 #
 # Текущая фаза проекта читается из
 # docs/architecture-decisions/current_phase.txt.
+#
+# Примечание (Фаза 6, ADR-006): новых исключений не добавлено.
+# Импорт infrastructure → application (FTS5SearchBackend →
+# snippet_terms_extractor) разрешён контрактом infrastructure-isolation:
+# infrastructure уже импортирует application-модуль
+# MetadataFilterQueryBuilder из того же слоя. См. раздел
+# «infrastructure-isolation» выше.
 # =====================================================================
 exception_lifecycle:
 

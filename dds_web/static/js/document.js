@@ -73,16 +73,48 @@
  *
  * - ``getDocumentRecord(docId)`` — получить запись вкладки.
  * - ``updateDocumentRecord(docId, updates)`` — обновить поля записи.
- * - ``incrementLoadSeq(docId)`` / ``getLoadSeq(docId)`` — счётчик
- *   асинхронных операций вкладки для защиты от race condition.
  * - ``ensureRenderer(docId)`` — гарантировать наличие renderer.
+ * - ``getAbortController(docId)`` / ``resetAbortController(docId)`` —
+ *   ``AbortController`` вкладки (Фаза 7, ADR-007).
  *
- * Счётчик ``_seq`` защищает от race condition: при быстрой смене
- * страниц или режимов устаревшие ответы API игнорируются, так как
- * их ``seq`` не совпадает с текущим. Это предотвращает:
+ * Защита от race condition (Фаза 7, ADR-007, шаг 4b):
  *
- * - утечку blob URL (устаревший ответ не создаёт объект);
- * - перезапись актуального содержимого устаревшим.
+ *   Единственный механизм — ``AbortController`` вкладки. Все
+ *   ``fetch`` в рамках одной загрузки получают ``signal`` от
+ *   свежего контроллера (создаётся в ``loadDocument`` через
+ *   ``resetAbortController``). При смене страницы/режима
+ *   ``resetAbortController`` прерывает pending fetch через
+ *   ``abort()`` — они отклоняются с ``AbortError``.
+ *
+ *   До Фазы 7 защита обеспечивалась счётчиком ``_seq``
+ *   (инкрементировался при каждой загрузке, все async-ответы
+ *   проверяли ``seq === window.DDSApp.getLoadSeq(docId)``). В
+ *   Фазе 7 (шаг 4a) ``AbortController`` добавлен **параллельно**
+ *   с ``_seq``; на шаге 4b ``_seq`` **полностью удалён** (методы
+ *   ``incrementLoadSeq``/``getLoadSeq`` и поле ``_seq`` в
+ *   ``app.js``).
+ *
+ * Обработка ``AbortError``:
+ *
+ *   Если ``fetch`` прерван через ``controller.abort()``, промис
+ *   отклоняется с ``DOMException``, у которого ``.name === "AbortError"``.
+ *   Это **не ошибка** — прерывание запрошено сознательно (смена
+ *   страницы/режима). В каждом ``.catch`` первая строка:
+ *   ``if (error.name === "AbortError") return;`` — тихий выход без
+ *   показа ошибки пользователю.
+ *
+ * Дополнительная защита для ``refreshHighlights``:
+ *
+ *   Публичный метод ``refreshHighlights`` (пересчёт подсветки
+ *   при переключении чекбокса «Ротация координат») **не передаёт**
+ *   ``signal`` в ``_fetchAndApplyHighlights``. Обоснование:
+ *   пересчёт подсветки не должен прерывать активный PNG-рендер.
+ *
+ *   Без ``_seq`` и без ``signal`` единственная защита от применения
+ *   устаревшего ответа подсветки к overlay сменившейся страницы —
+ *   проверка ``rec.page !== pageNumber`` в ``_fetchAndApplyHighlights``
+ *   (перед ``_applyHighlights``). Эта проверка выполняется всегда,
+ *   независимо от наличия ``signal``.
  *
  * Инкапсуляция публичного API:
  *
@@ -90,8 +122,7 @@
  * и ``ViewModeManager._setActive`` напрямую, что нарушало инкапсуляцию.
  * Введены публичные методы ``PageRenderer.refreshHighlights`` и
  * ``ViewModeManager.applyTextFallbackState``, инкапсулирующие
- * детали (инкремент ``_seq`` для подсветки, блокировка кнопки
- * «Рендер» для fallback). Внутренние методы остаются приватными.
+ * детали. Внутренние методы остаются приватными.
  *
  * Подсветка совпадений:
  *
@@ -184,10 +215,11 @@
  * - Рендеринг через DOM API без внешних библиотек.
  * - Per-tab состояние изолировано: несколько открытых документов
  *   не влияют друг на друга.
+ * - ``AbortError`` — не ошибка; прерывание fetch сознательное.
  *
  * Зависимости:
  * - ``app.js`` — фасад ``window.DDSApp`` для доступа к per-tab
- *   состоянию.
+ *   состоянию и управления ``AbortController``.
  * - ``main.html`` — DOM-структура с контейнерами для документов.
  * - ``base.css`` — стили ``.table``, ``.card``, ``.page-text``,
  *   ``.pagination``, ``.alert``, ``.page-render-*``,
@@ -680,21 +712,21 @@
      * открытие/закрытие нескольких документов не влияет на blob URL,
      * zoom и флаги трансформации друг друга.
      *
-     * Защита от race condition:
-     * Все асинхронные операции (запрос PNG, подсветка) принимают
-     * параметр ``seq`` — значение счётчика ``AppState.openDocuments[i]._seq``
-     * на момент запуска. После каждого ``await`` (в терминах Promise)
-     * проверяется ``seq === window.DDSApp.getLoadSeq(docId)``.
-     * Устаревшие ответы игнорируются.
+     * Защита от race condition (Фаза 7, ADR-007, шаг 4b):
+     *
+     *   Единственный механизм — ``signal`` от ``AbortController``
+     *   вкладки. Передаётся во все ``fetch`` в рамках одной загрузки
+     *   страницы. При смене страницы/режима ``loadDocument`` вызывает
+     *   ``resetAbortController``, pending fetch прерываются с
+     *   ``AbortError``.
      *
      * Публичный API для внешних модулей:
      * Метод ``refreshHighlights(pageNumber, terms)`` — единственный
      * публичный способ пересчитать подсветку страницы извне
      * (``app.js`` вызывает его при переключении чекбокса
-     * «Ротация координат»). Он инкапсулирует инкремент ``_seq``
-     * и вызов приватного ``_fetchAndApplyHighlights``. Остальные
-     * методы ``_fetchAndApplyHighlights``, ``_applyHighlights``
-     * остаются приватными.
+     * «Ротация координат»). Он вызывает приватный
+     * ``_fetchAndApplyHighlights`` без ``signal``: пересчёт подсветки
+     * не должен прерывать активный PNG-рендер.
      *
      * @param {string} docId — идентификатор документа.
      * @returns {Object} Объект с методами ``renderPage``, ``setZoom``,
@@ -769,18 +801,20 @@
         /**
          * Пересчитывает подсветку страницы (публичный метод).
          *
-         * Инкрементирует счётчик загрузок вкладки (``_seq``) через
-         * фасад ``window.DDSApp``, затем вызывает приватный
-         * ``_fetchAndApplyHighlights`` с полученным ``seq``. Это
-         * защищает от race condition при быстрой смене страницы
-         * или режима просмотра.
-         *
          * Единственная публичная точка пересчёта подсветки извне
          * (``app.js`` использует её при переключении чекбокса
          * «Ротация координат»). Прямой вызов
          * ``_fetchAndApplyHighlights`` из внешних модулей не
-         * допускается: инкапсуляция деталей (инкремент ``_seq``)
-         * обеспечена этим методом.
+         * допускается: инкапсуляция деталей обеспечена этим методом.
+         *
+         * Примечание (Фаза 7, ADR-007, шаг 4b):
+         *
+         *   ``signal`` **не передаётся** в ``_fetchAndApplyHighlights``
+         *   (передаётся ``undefined``). Обоснование: пересчёт
+         *   подсветки не должен прерывать активный PNG-рендер.
+         *   Защита от применения устаревшего ответа к overlay
+         *   сменившейся страницы — проверка ``rec.page !== pageNumber``
+         *   в ``_fetchAndApplyHighlights`` (перед ``_applyHighlights``).
          *
          * Если ``window.DDSApp`` недоступен (например, из-за
          * нарушения порядка загрузки скриптов), метод не выполняет
@@ -791,15 +825,14 @@
          */
         self.refreshHighlights = function (pageNumber, terms) {
             if (!window.DDSApp ||
-                typeof window.DDSApp.incrementLoadSeq !== "function") {
+                typeof window.DDSApp.getDocumentRecord !== "function") {
                 console.warn(
-                    "refreshHighlights: window.DDSApp.incrementLoadSeq " +
+                    "refreshHighlights: window.DDSApp.getDocumentRecord " +
                     "недоступен, пересчёт подсветки пропущен."
                 );
                 return;
             }
-            var seq = window.DDSApp.incrementLoadSeq(docId);
-            self._fetchAndApplyHighlights(pageNumber, terms, seq);
+            self._fetchAndApplyHighlights(pageNumber, terms, undefined);
         };
 
         /**
@@ -860,7 +893,7 @@
          * 3. Показ скелетона в контейнере.
          * 4. Синхронизация состояния чекбокса «Ротация координат»
          *    с per-page флагом текущей страницы.
-         * 5. Fetch PNG (с защитой от race через ``seq``).
+         * 5. Fetch PNG (с защитой от race через ``signal``).
          * 6. Создание DOM-структуры: wrapper, img, overlay,
          *    scroll-container.
          * 7. Установка ``img.style.maxWidth = "100%"`` и
@@ -871,13 +904,18 @@
          * 9. Навешивание обработчиков zoom и panning.
          * 10. Опциональный fetch подсветки.
          *
+         * Защита от race condition (Фаза 7, ADR-007, шаг 4b):
+         *   Все ``fetch`` получают ``signal`` вкладки. При смене
+         *   страницы/режима ``resetAbortController`` прерывает
+         *   pending fetch; ``signal.aborted`` — единый guard.
+         *
          * @param {number} pageNumber — номер страницы (0-based).
          * @param {Object} options — параметры вкладки
          *   (``{termsByPage: {pageNumber: [terms]}}``).
-         * @param {number} seq — значение счётчика загрузок вкладки
-         *   на момент запуска.
+         * @param {AbortSignal} signal — сигнал ``AbortController``
+         *   вкладки. Может быть ``undefined`` (fallback без отмены).
          */
-        self.renderPage = function (pageNumber, options, seq) {
+        self.renderPage = function (pageNumber, options, signal) {
             // При смене страницы без ручного zoom — сбросить zoom
             // и запланировать пересчёт fit-width для новой страницы.
             if (!self._userZoomed) {
@@ -900,9 +938,10 @@
             var url = "/api/documents/" + encodeURIComponent(docId) +
                 "/pages/" + pageNumber + "/render?dpi=300";
 
-            fetch(url)
+            fetch(url, { signal: signal })
                 .then(function (response) {
-                    if (seq !== window.DDSApp.getLoadSeq(docId)) return null;
+                    // Прерывание через AbortController — тихий выход.
+                    if (signal && signal.aborted) return null;
                     if (!response.ok) {
                         var err = new Error("render_error");
                         err.status = response.status;
@@ -912,7 +951,7 @@
                 })
                 .then(function (blob) {
                     if (blob === null) return;
-                    if (seq !== window.DDSApp.getLoadSeq(docId)) return;
+                    if (signal && signal.aborted) return;
 
                     self._blobUrl = URL.createObjectURL(blob);
 
@@ -980,13 +1019,15 @@
                     var terms = (options && options.termsByPage &&
                         options.termsByPage[pageNumber]) || [];
                     if (terms.length > 0) {
-                        self._fetchAndApplyHighlights(pageNumber, terms, seq);
+                        self._fetchAndApplyHighlights(pageNumber, terms, signal);
                     }
                 })
                 .catch(function (error) {
-                    if (seq !== window.DDSApp.getLoadSeq(docId)) return;
+                    // Прерывание через AbortController — тихий выход.
+                    if (error.name === "AbortError") return;
+                    if (signal && signal.aborted) return;
                     if (error.status === 500 || error.status === 504) {
-                        self._fallbackToText(pageNumber, seq);
+                        self._fallbackToText(pageNumber, signal);
                     } else {
                         container.innerHTML =
                             '<div class="alert alert--error">' +
@@ -1009,24 +1050,37 @@
          *   поле не передаётся — сервер выполнит авто-диагностику.
          *
          * После получения ответа:
+         * - Проверяет актуальность: если вкладка уже показывает
+         *   другую страницу (``rec.page !== pageNumber``) — выход
+         *   без применения. Это единственная защита от применения
+         *   устаревшего ответа для случая ``refreshHighlights``,
+         *   где ``signal`` не передаётся.
          * - Сохраняет фактическое значение ``data.applied_transform``
          *   в ``self._transformByPage[pageNumber]``.
          * - Синхронизирует чекбокс «Ротация координат» с фактическим
          *   состоянием и уровнем уверенности.
          * - Применяет прямоугольники подсветки к overlay.
          *
+         * Параметр ``signal`` (Фаза 7, ADR-007):
+         *   Опциональный ``AbortSignal`` вкладки. Если передан —
+         *   добавляется в ``fetch`` для отмены запроса при смене
+         *   страницы/режима. Если ``undefined`` (например, вызов
+         *   из ``refreshHighlights``) — fetch без отмены,
+         *   защита от race обеспечивается проверкой
+         *   ``rec.page !== pageNumber``.
+         *
          * Примечание:
          *     Метод приватный. Для вызова из внешних модулей
          *     (например, ``app.js``) следует использовать публичный
-         *     ``refreshHighlights(pageNumber, terms)``, который
-         *     инкрементирует ``_seq`` и предотвращает race condition.
+         *     ``refreshHighlights(pageNumber, terms)``.
          *
          * @param {number} pageNumber — номер страницы.
          * @param {Array<string>} terms — термины для поиска.
-         * @param {number} seq — текущий счётчик загрузок.
+         * @param {AbortSignal} [signal] — сигнал ``AbortController``
+         *   вкладки. Может быть ``undefined`` (fetch без отмены).
          * @private
          */
-        self._fetchAndApplyHighlights = function (pageNumber, terms, seq) {
+        self._fetchAndApplyHighlights = function (pageNumber, terms, signal) {
             var body = { terms: terms };
             var saved = self._transformByPage[pageNumber];
             if (typeof saved === "boolean") {
@@ -1040,16 +1094,25 @@
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(body),
+                    signal: signal,
                 }
             )
                 .then(function (r) {
-                    if (seq !== window.DDSApp.getLoadSeq(docId)) return null;
+                    // Прерывание через AbortController — тихий выход.
+                    if (signal && signal.aborted) return null;
                     if (!r.ok) return null;
                     return r.json();
                 })
                 .then(function (data) {
                     if (data === null) return;
-                    if (seq !== window.DDSApp.getLoadSeq(docId)) return;
+                    if (signal && signal.aborted) return;
+
+                    // Проверка актуальности: если вкладка уже
+                    // показывает другую страницу — результат устарел.
+                    // Критично для случая refreshHighlights, где
+                    // signal не передаётся (нет отмены fetch).
+                    var rec = window.DDSApp.getDocumentRecord(docId);
+                    if (rec && rec.page !== pageNumber) return;
 
                     // Сохраняем фактическое значение трансформации
                     // для страницы (для последующих запросов и
@@ -1060,7 +1123,6 @@
                     _syncTransformCheckbox(
                         docId,
                         pageNumber,
-                        seq,
                         data.applied_transform,
                         data.transform_confidence
                     );
@@ -1068,6 +1130,8 @@
                     self._applyHighlights(data.highlights || []);
                 })
                 .catch(function (err) {
+                    // Прерывание через AbortController — тихий выход.
+                    if (err.name === "AbortError") return;
                     console.warn("Highlights fetch failed:", err);
                 });
         };
@@ -1318,17 +1382,23 @@
          * инкапсулирует переключение активной кнопки и блокировку
          * кнопки «Рендер».
          *
+         * Параметр ``signal`` (Фаза 7, ADR-007):
+         *   Передаётся в ``_loadPageText`` для отмены fetch текста
+         *   при смене страницы/режима. Может быть ``undefined``,
+         *   если исходный fetch был без ``AbortController``.
+         *
          * @param {number} pageNumber — номер страницы.
-         * @param {number} seq — текущий счётчик загрузок.
+         * @param {AbortSignal} [signal] — сигнал ``AbortController``
+         *   вкладки. Может быть ``undefined``.
          * @private
          */
-        self._fallbackToText = function (pageNumber, seq) {
+        self._fallbackToText = function (pageNumber, signal) {
             // Вкладка закрыта — нечего отрисовывать.
             if (!self._container) return;
 
             self._releaseBlob();
             DocumentLoader._loadPageText(
-                docId, pageNumber, self._container, seq
+                docId, pageNumber, self._container, signal
             );
             ViewModeManager.setMode(docId, "text", { persist: false });
             ViewModeManager.applyTextFallbackState(docId);
@@ -1477,38 +1547,35 @@
      * +----+----------------------------------------------------+
      * | №  | Описание                                           |
      * +====+====================================================+
-     * | 1  | Проверка актуальности ``seq``: если счётчик         |
-     * |    | изменился — ответ устарел, выход.                   |
-     * +----+----------------------------------------------------+
-     * | 2  | Проверка, что ответ относится к текущей странице    |
+     * | 1  | Проверка, что ответ относится к текущей странице    |
      * |    | вкладки (``rec.page === pageNumber``). Если нет —   |
      * |    | выход.                                              |
      * +----+----------------------------------------------------+
-     * | 3  | Поиск чекбокса по id. Если не найден — выход.       |
+     * | 2  | Поиск чекбокса по id. Если не найден — выход.       |
      * +----+----------------------------------------------------+
-     * | 4  | Установка ``disabled = false`` и                    |
+     * | 3  | Установка ``disabled = false`` и                    |
      * |    | ``checked = !!applied``.                            |
      * +----+----------------------------------------------------+
-     * | 5  | Установка ``title`` в зависимости от ``confidence``:|
+     * | 4  | Установка ``title`` в зависимости от ``confidence``:|
      * |    | a. ``"high"`` — высокая уверенность;                |
      * |    | b. ``"medium"`` — средняя уверенность;              |
      * |    | c. ``"manual"`` — ручное управление;                |
      * |    | d. иначе — аномалия не обнаружена.                  |
      * +----+----------------------------------------------------+
      *
+     * Примечание (Фаза 7, ADR-007, шаг 4b):
+     *   Ранее проверка включала ``seq !== window.DDSApp.getLoadSeq(docId)``.
+     *   После удаления ``_seq`` актуальность ответа для текущей
+     *   страницы проверяется через ``rec.page !== pageNumber``.
+     *
      * @param {string} docId — идентификатор документа.
      * @param {number} pageNumber — номер страницы (0-based).
-     * @param {number} seq — значение счётчика загрузок на момент
-     *   отправки запроса.
      * @param {boolean} applied — фактически применённая трансформация.
      * @param {string} confidence — уровень уверенности диагностики
      *   (``"high"`` / ``"medium"`` / ``"none"`` / ``"manual"``).
      * @private
      */
-    function _syncTransformCheckbox(docId, pageNumber, seq, applied, confidence) {
-        // Проверка актуальности seq.
-        if (seq !== window.DDSApp.getLoadSeq(docId)) return;
-
+    function _syncTransformCheckbox(docId, pageNumber, applied, confidence) {
         // Проверка, что ответ относится к текущей странице.
         var rec = window.DDSApp.getDocumentRecord(docId);
         if (rec && rec.page !== pageNumber) return;
@@ -1743,12 +1810,21 @@
      * REST API и рендерит содержимое во вкладке документа. Режим
      * рендеринга определяется ``ViewModeManager.getMode(docId)``.
      *
-     * Координация асинхронных операций:
-     * При каждом вызове ``loadDocument`` инкрементируется счётчик
-     * ``AppState.openDocuments[i]._seq``. Все асинхронные операции
-     * внутри загрузки проверяют актуальность счётчика после каждого
-     * Promise — если счётчик изменился (запущена новая загрузка),
-     * ответ игнорируется.
+     * Координация асинхронных операций (Фаза 7, ADR-007, шаг 4b):
+     *
+     *   Единственный механизм защиты от race condition —
+     *   ``AbortController`` вкладки. Перед началом загрузки
+     *   вызывается ``resetAbortController(docId)``: предыдущий
+     *   контроллер прерывается (``abort()``), pending fetch
+     *   отменяются с ``AbortError``. Создаётся свежий контроллер,
+     *   его ``signal`` передаётся во все ``fetch`` текущей загрузки.
+     *
+     *   ``AbortError`` в ``.catch`` — тихий выход (прерывание
+     *   сознательное, не ошибка).
+     *
+     *   До Фазы 7 защита обеспечивалась счётчиком ``_seq``.
+     *   Удалён в шаге 4b после подтверждения стабильности
+     *   ``AbortController``.
      *
      * Окно ``pageCount === undefined``:
      * Между первым и вторым вызовом ``updateDocumentRecord``
@@ -1767,7 +1843,7 @@
      * | pageNumber, options, renderer)`` | страницы, рендеринг.             |
      * +----------------------------------+----------------------------------+
      * | ``_loadPageText(docId, pageNumber,| Загрузка текста страницы и его  |
-     * | textContainer, seq)``            | рендеринг.                       |
+     * | textContainer, signal)``         | рендеринг.                       |
      * +----------------------------------+----------------------------------+
      * | ``refreshNavigation(docId)``     | Перерисовка пагинации без        |
      * |                                  | перезагрузки содержимого.        |
@@ -1779,7 +1855,9 @@
          * Загружает данные документа через API.
          *
          * Последовательность:
-         * 1. Инкремент счётчика загрузок вкладки.
+         * 1. Сброс ``AbortController`` вкладки: pending fetch
+         *    предыдущей загрузки прерываются, создаётся свежий
+         *    контроллер, его ``signal`` используется ниже.
          * 2. Обновление записи вкладки (page, options, renderer).
          * 3. Запрос метаданных.
          * 4. Установка ``pageCount`` в записи вкладки.
@@ -1787,6 +1865,12 @@
          * 6. Рендеринг содержимого в зависимости от режима
          *    (``renderer.renderPage`` или ``_loadPageText``).
          * 7. Рендеринг навигации.
+         *
+         * Защита от race condition (Фаза 7, ADR-007, шаг 4b):
+         *   Все ``fetch`` получают ``signal`` от свежего
+         *   ``AbortController`` (шаг 1). При смене страницы или
+         *   режима вызывается ``resetAbortController``, pending
+         *   fetch прерываются. ``signal.aborted`` — единый guard.
          *
          * @param {string} docId — Идентификатор документа.
          * @param {string} fileName — Отображаемое имя файла.
@@ -1807,22 +1891,33 @@
             var navContainer = document.getElementById("doc-nav-" + docId);
             var textContainer = document.getElementById("doc-text-" + docId);
 
-            // Инкремент счётчика загрузок для защиты от race.
-            var seq = window.DDSApp.incrementLoadSeq(docId);
+            // Шаг 1: Сброс AbortController. Прерывает pending fetch
+            // предыдущей загрузки (PNG, highlights, текст), создаёт
+            // свежий контроллер. Сигнал от него передаётся во все
+            // fetch текущей загрузки.
+            var controller = window.DDSApp.resetAbortController(docId);
+            var signal = controller ? controller.signal : undefined;
 
+            // Шаг 2: Обновление записи вкладки.
             window.DDSApp.updateDocumentRecord(docId, {
                 page: pageNumber,
                 options: options,
                 renderer: renderer,
             });
 
-            fetch("/api/documents/" + encodeURIComponent(docId))
+            fetch(
+                "/api/documents/" + encodeURIComponent(docId),
+                { signal: signal }
+            )
                 .then(function (r) {
+                    // Прерывание через AbortController — тихий выход.
+                    if (signal && signal.aborted) return null;
                     if (!r.ok) throw new Error("Документ не найден");
                     return r.json();
                 })
                 .then(function (doc) {
-                    if (seq !== window.DDSApp.getLoadSeq(docId)) return;
+                    if (doc === null) return;
+                    if (signal && signal.aborted) return;
 
                     // Сохраняем pageCount для refreshNavigation.
                     window.DDSApp.updateDocumentRecord(docId, {
@@ -1833,7 +1928,7 @@
 
                     var viewMode = ViewModeManager.getMode(docId);
                     if (viewMode === "render") {
-                        renderer.renderPage(pageNumber, options, seq);
+                        renderer.renderPage(pageNumber, options, signal);
                     } else {
                         // Освобождаем blob URL от предыдущего рендера,
                         // если он был: при переключении render → text
@@ -1842,7 +1937,7 @@
                             renderer.releaseBlob();
                         }
                         DocumentLoader._loadPageText(
-                            docId, pageNumber, textContainer, seq
+                            docId, pageNumber, textContainer, signal
                         );
                     }
 
@@ -1851,7 +1946,9 @@
                     );
                 })
                 .catch(function (error) {
-                    if (seq !== window.DDSApp.getLoadSeq(docId)) return;
+                    // Прерывание через AbortController — тихий выход.
+                    if (error.name === "AbortError") return;
+                    if (signal && signal.aborted) return;
                     if (textContainer) {
                         textContainer.innerHTML =
                             '<div class="alert alert--error">' +
@@ -1913,34 +2010,47 @@
          * Последовательность:
          * 1. Показ скелетона.
          * 2. Fetch ``GET /api/documents/{id}/pages/{n}``.
-         * 3. Проверка ``seq``.
+         * 3. Проверка ``signal`` (при наличии).
          * 4. Рендеринг текста через ``DocumentRenderer.renderPageText``.
+         *
+         * Защита от race condition (Фаза 7, ADR-007, шаг 4b):
+         *   Проверка ``signal.aborted`` — единственный guard.
+         *   Параметр ``signal`` опционален: если ``undefined``
+         *   (например, вызвано из ``_fallbackToText`` при уже
+         *   прерванной загрузке), fetch работает без отмены.
          *
          * @param {string} docId — Идентификатор документа.
          * @param {number} pageNumber — Номер страницы (0-based).
          * @param {HTMLElement} textContainer — Контейнер для текста.
-         * @param {number} seq — Текущий счётчик загрузок вкладки.
+         * @param {AbortSignal} [signal] — Сигнал ``AbortController``
+         *   вкладки. Может быть ``undefined`` (fetch без отмены).
          */
-        _loadPageText: function (docId, pageNumber, textContainer, seq) {
+        _loadPageText: function (docId, pageNumber, textContainer, signal) {
             if (!textContainer) return;
             textContainer.innerHTML = '<div class="page-render-skeleton"></div>';
 
             fetch(
                 "/api/documents/" + encodeURIComponent(docId) +
-                "/pages/" + pageNumber
+                "/pages/" + pageNumber,
+                { signal: signal }
             )
                 .then(function (r) {
+                    // Прерывание через AbortController — тихий выход.
+                    if (signal && signal.aborted) return null;
                     if (!r.ok) throw new Error("Страница не найдена");
                     return r.json();
                 })
                 .then(function (pageData) {
-                    if (seq !== window.DDSApp.getLoadSeq(docId)) return;
+                    if (pageData === null) return;
+                    if (signal && signal.aborted) return;
                     DocumentRenderer.renderPageText(
                         textContainer, pageData.text
                     );
                 })
                 .catch(function (err) {
-                    if (seq !== window.DDSApp.getLoadSeq(docId)) return;
+                    // Прерывание через AbortController — тихий выход.
+                    if (err.name === "AbortError") return;
+                    if (signal && signal.aborted) return;
                     textContainer.innerHTML =
                         '<div class="alert alert--error">' +
                         DocumentUtils.escapeHtml(err.message) +

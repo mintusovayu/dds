@@ -57,6 +57,27 @@ Unit-тесты (6):
 ``starlette.testclient.TestClient``). При отсутствии ``httpx``
 они скипаются через :func:`pytest.importorskip`.
 
+Подавление предупреждений сторонних библиотек
+---------------------------------------------
+
+При использовании ``TestClient`` с текущими версиями
+``starlette`` / ``anyio`` возникают два deprecation-предупреждения,
+не относящихся к коду DDS:
+
+- ``StarletteDeprecationWarning``: «Using ``httpx`` with
+  ``starlette.testclient`` is deprecated; install ``httpx2``
+  instead» — из ``fastapi/testclient.py``.
+- ``DeprecationWarning``: «The ``anyio.abc.BlockingPortal``
+  alias is deprecated, use ``anyio.from_thread.BlockingPortal``
+  instead» — из ``starlette/testclient.py``.
+
+Оба срабатывают в момент импорта ``fastapi.testclient``.
+Подавляются через ``@pytest.mark.filterwarnings`` **локально**
+на двух интеграционных тестах — unit-тесты, не использующие
+``TestClient``, не затрагиваются. Глобальное подавление в
+``pyproject.toml`` отклонено: маскировало бы deprecation-сигналы
+в других тестах.
+
 Стратегия тестирования
 ----------------------
 - **``SimpleNamespace`` вместо реального ``Request``.** Функции
@@ -116,7 +137,9 @@ Unit-тесты (6):
     - не читает и не пишет файлы;
     - не поднимает реальный ASGI-сервер (кроме ``TestClient``);
     - каждый тест изолирован, не зависит от порядка выполнения;
-    - тесты детерминированы: одинаковый вход → одинаковый результат.
+    - тесты детерминированы: одинаковый вход → одинаковый результат;
+    - предупреждения сторонних библиотек подавляются точечно
+      (см. раздел «Подавление предупреждений»).
 """
 
 from __future__ import annotations
@@ -265,6 +288,8 @@ def test_get_auth_service_raises_503_when_service_is_none() -> None:
 # =====================================================================
 
 
+@pytest.mark.filterwarnings(r"ignore:Using `httpx` with `starlette\.testclient` is deprecated")
+@pytest.mark.filterwarnings(r"ignore:The anyio\.abc\.BlockingPortal alias is deprecated")
 def test_dependency_override_for_get_context() -> None:
     """``app.dependency_overrides[get_context]`` подменяет контекст.
 
@@ -314,6 +339,15 @@ def test_dependency_override_for_get_context() -> None:
         ``httpx`` — транзитивная зависимость
         ``starlette.testclient.TestClient``. При её отсутствии
         тест скипается через :func:`pytest.importorskip`.
+
+    Примечание:
+        Маркеры ``@pytest.mark.filterwarnings`` подавляют два
+        deprecation-предупреждения, исходящих из кода
+        ``starlette.testclient`` при импорте (см. раздел
+        «Подавление предупреждений» в docstring модуля). Оба
+        предупреждения не относятся к коду DDS и не влияют на
+        проверяемый контракт; подавление действует только в
+        этом тесте.
     """
     pytest.importorskip("httpx")
     from fastapi import FastAPI
@@ -335,6 +369,8 @@ def test_dependency_override_for_get_context() -> None:
     assert response.json() == {"id": id(sentinel)}
 
 
+@pytest.mark.filterwarnings(r"ignore:Using `httpx` with `starlette\.testclient` is deprecated")
+@pytest.mark.filterwarnings(r"ignore:The anyio\.abc\.BlockingPortal alias is deprecated")
 def test_dependency_override_for_get_auth_service() -> None:
     """``app.dependency_overrides[get_auth_service]`` подменяет сервис.
 
@@ -377,6 +413,12 @@ def test_dependency_override_for_get_auth_service() -> None:
         ``httpx`` — транзитивная зависимость
         ``starlette.testclient.TestClient``. При её отсутствии
         тест скипается через :func:`pytest.importorskip`.
+
+    Примечание:
+        Маркеры ``@pytest.mark.filterwarnings`` подавляют те же
+        два deprecation-предупреждения, что и в предыдущем тесте
+        (см. раздел «Подавление предупреждений» в docstring
+        модуля). Подавление действует только в этом тесте.
     """
     pytest.importorskip("httpx")
     from fastapi import FastAPI

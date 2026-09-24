@@ -368,6 +368,7 @@ def _compute_build_hash() -> str:
     """env DDS_BUILD_HASH → git HEAD (--short=8) → "dev"."""
     ...
 
+
 templates.env.globals["build_hash"] = _compute_build_hash()
 ```
 

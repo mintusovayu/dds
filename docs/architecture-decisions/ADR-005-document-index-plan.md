@@ -297,7 +297,9 @@ pickle-сериализация без модификаций.
 class IIndexWriter(Protocol):
     def write_plan(self, plan: DocumentIndexPlan) -> None: ...
     def write_plans_batch(
-        self, plans: list[DocumentIndexPlan], commit_interval: int = 200,
+        self,
+        plans: list[DocumentIndexPlan],
+        commit_interval: int = 200,
     ) -> tuple[int, int]: ...
     def remove_document(self, doc_id: str) -> None: ...
 ```
