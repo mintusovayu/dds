@@ -39,8 +39,11 @@
 #
 # Триггеры:
 #   - pull_request → main: при изменении релевантных путей.
-#   - push → main: проверка на актуальной ветке.
 #   - workflow_dispatch: ручной запуск для диагностики.
+#   - push → main: ОТКЛЮЧЁН. Требуется self-hosted runner с метками
+#     `self-hosted, linux, x64, dds-bench`. Если runner недоступен,
+#     job зависает в очереди навсегда. Раскомментировать блок
+#     `push:` в секции `on:`, когда runner настроен и стабилен.
 #
 # Concurrency:
 #   Отменяет предыдущие запуски на той же ветке/PR. Экономит время
@@ -69,9 +72,13 @@ on:
       - 'requirements-dev.txt'
       - '.github/workflows/bench.yml'
 
-  # Проверка после merge: baseline остаётся актуальным на main.
-  push:
-    branches: [main]
+  # push-триггер отключён: требует self-hosted runner с метками
+  # `self-hosted, linux, x64, dds-bench`. Если runner недоступен,
+  # job зависает в очереди навсегда. Раскомментировать, когда
+  # runner настроен и стабилен.
+  #
+  # push:
+  #   branches: [main]
 
   # Ручной запуск (например, при подозрении на регрессию).
   workflow_dispatch:

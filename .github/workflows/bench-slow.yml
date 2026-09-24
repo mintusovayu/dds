@@ -47,11 +47,12 @@
 #   обеспечить детерминизм.
 #
 # Триггеры:
-#   - push → main: проверка на актуальной ветке.
-#   - workflow_dispatch: ручной запуск для диагностики.
-#   - schedule: еженедельно (понедельник 03:00 UTC), ловит
-#     медленную деградацию от зависимостей.
 #   - pull_request с меткой `bench-slow`: opt-in проверка.
+#   - workflow_dispatch: ручной запуск для диагностики.
+#   - push → main: ОТКЛЮЧЁН. Требуется self-hosted runner с метками
+#     `self-hosted, linux, x64, dds-bench`. Если runner недоступен,
+#     job зависает в очереди навсегда.
+#   - schedule: ОТКЛЮЧЁН по той же причине.
 #
 # Concurrency:
 #   Отменяет предыдущие запуски на той же ветке/PR. Критично:
@@ -70,22 +71,25 @@ name: Slow Benchmarks
 # Триггеры запуска
 # =====================================================================
 on:
-  # Проверка после merge в main: baseline остаётся актуальным.
-  # Не на каждый push в feature-ветку — слишком дорого.
-  push:
-    branches: [main]
-    paths:
-      - 'dds_core/**'
-      - 'dds_web/**'
-      - 'tests/benchmarks/bench_slow.py'
-      - 'tests/benchmarks/baseline.json'
-      - 'requirements.txt'
-      - 'requirements-dev.txt'
-      - '.github/workflows/bench-slow.yml'
+  # push-триггер отключён: требует self-hosted runner с метками
+  # `self-hosted, linux, x64, dds-bench`. Если runner недоступен,
+  # job зависает в очереди навсегда. Раскомментировать, когда
+  # runner настроен и стабилен.
+  #
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - 'dds_core/**'
+  #     - 'dds_web/**'
+  #     - 'tests/benchmarks/bench_slow.py'
+  #     - 'tests/benchmarks/baseline.json'
+  #     - 'requirements.txt'
+  #     - 'requirements-dev.txt'
+  #     - '.github/workflows/bench-slow.yml'
 
   # Opt-in проверка на PR: срабатывает при добавлении метки
   # `bench-slow`. Используется при подозрении на регрессию сканирования
-  # в конкретном PR.
+  # в конкретном PR. Требуется self-hosted runner.
   pull_request:
     branches: [main]
     types: [labeled]
@@ -94,11 +98,11 @@ on:
       - 'dds_web/**'
       - 'tests/benchmarks/bench_slow.py'
 
-  # Еженедельный прогон (понедельник 03:00 UTC).
-  # Ловит медленную деградацию от обновлений зависимостей,
-  # OS-патчей, изменений в железе runner'а.
-  schedule:
-    - cron: '0 3 * * 1'
+  # Еженедельный прогон отключён по той же причине:
+  # требуется self-hosted runner.
+  #
+  # schedule:
+  #   - cron: '0 3 * * 1'
 
   # Ручной запуск (например, при подозрении на регрессию,
   # или для обновления baseline).
