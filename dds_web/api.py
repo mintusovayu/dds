@@ -187,9 +187,10 @@ import os
 import re
 import tempfile
 import uuid
+from collections.abc import Callable
 from concurrent.futures import Executor
 from pathlib import Path
-from typing import Annotated, Any, Callable, Protocol, runtime_checkable
+from typing import Annotated, Any, Protocol, runtime_checkable
 
 try:
     from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -199,7 +200,7 @@ except ImportError:
     raise ImportError(
         "Для запуска веб-интерфейса DDS необходимо установить "
         "fastapi и pydantic: pip install fastapi pydantic"
-    )
+    ) from None
 
 from dds_core.application.highlights_service import HighlightsService
 from dds_core.application.module_lifecycle import ModuleLifecycle
@@ -1029,12 +1030,12 @@ async def change_password(
         raise HTTPException(
             status_code=504,
             detail="Сервер перегружен. Попробуйте позже.",
-        )
+        ) from None
     except ValueError as e:
         raise HTTPException(
             status_code=400,
             detail=str(e),
-        )
+        ) from e
     return ChangePasswordResponse(message="Пароль изменён.")
 
 
@@ -1118,9 +1119,9 @@ async def search(
         raise HTTPException(
             status_code=504,
             detail="Поиск не завершился. Попробуйте позже.",
-        )
+        ) from None
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Строим ответ через Pydantic-модели (валидация + корректная
     # генерация OpenAPI-схемы).
@@ -1182,7 +1183,7 @@ async def list_themes(
         raise HTTPException(
             status_code=500,
             detail=f"Не удалось просканировать каталог тем: {e}",
-        )
+        ) from e
 
 
 # ----------------------------------------------------------------------
@@ -1206,7 +1207,10 @@ async def get_filter_metadata(
             ctx.reference_data_service.get_references,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка получения справочников: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка получения справочников: {e}",
+        ) from e
 
     return data
 
@@ -1302,7 +1306,7 @@ async def get_page_text(
         raise HTTPException(
             status_code=504,
             detail="Загрузка текста страницы не завершилась. Попробуйте позже.",
-        )
+        ) from None
 
     return PageTextResponse(
         doc_id=doc_id,
@@ -1515,7 +1519,7 @@ async def render_document_page(
             recovery_action="Рендер прерван по таймауту.",
         )
     except TimeoutError:
-        raise HTTPException(status_code=504, detail="Рендер не завершился.")
+        raise HTTPException(status_code=504, detail="Рендер не завершился.") from None
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка рендера: {e}") from e
 
@@ -1605,7 +1609,7 @@ async def get_page_highlights(
             recovery_action="Подсветка недоступна.",
         )
     except TimeoutError:
-        raise HTTPException(status_code=504, detail="Подсветка не завершилась.")
+        raise HTTPException(status_code=504, detail="Подсветка не завершилась.") from None
 
     highlights, applied_transform, transform_confidence = ctx.highlights_service.search_highlights(
         index,
@@ -1697,8 +1701,7 @@ async def delete_document(
         raise HTTPException(
             status_code=504,
             detail="Удаление документа не завершилось.",
-        )
-
+        ) from None
     # Инвалидация LRU-кэша текста страниц для удалённого документа.
     # См. docstring выше.
     ctx.search_engine.invalidate_page_text_cache(doc_id)
@@ -1823,7 +1826,10 @@ async def refresh_document_metadata(
             ctx.scan_orchestrator.refresh_document_metadata,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка обновления метаданных: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка обновления метаданных: {e}",
+        ) from e
 
     return {
         "message": "Метаданные документов обновлены.",
@@ -2060,7 +2066,7 @@ async def get_index_status(
                 raise HTTPException(
                     status_code=504,
                     detail="Пересчёт не завершился. Попробуйте позже.",
-                )
+                ) from None
         else:
             index_status = await loop.run_in_executor(
                 ctx.api_executor,
@@ -2073,7 +2079,7 @@ async def get_index_status(
         raise HTTPException(
             status_code=500,
             detail=f"Не удалось получить состояние индексации: {e}",
-        )
+        ) from e
 
     return IndexStatusResponse(
         state=index_status.state.value,
@@ -2240,7 +2246,7 @@ async def update_settings(
         raise HTTPException(
             status_code=500,
             detail=f"Ошибка записи конфигурации: {e}",
-        )
+        ) from e
 
     message = "Настройки обновлены."
     if requires_restart:

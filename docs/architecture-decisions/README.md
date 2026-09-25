@@ -22,7 +22,9 @@ commit-истории и чатам.
 - `forkserver` вместо `fork` на Linux;
 - `?v={{ build_hash }}` через `env.globals`, а не `app.state`;
 - `AbortController` вместо счётчика `_seq` для клиентской защиты
-  от race condition.
+  от race condition;
+- разделение read-контракта на `IDocumentRepository` (ADR-008),
+  а не расширение `IIndexWriter` до write+read.
 
 Без журнала такие решения выглядят как произвольные. С журналом —
 как результат анализа альтернатив. Любая попытка «упростить» их
@@ -78,6 +80,7 @@ ADR-NNN-<kebab-case-name>.md
 - `ADR-004-process-task-runner.md`
 - `ADR-005-document-index-plan.md`
 - `ADR-007-client-abort-controller.md`
+- `ADR-008-read-side-sql-cleanup.md`
 
 Особый случай: `ADR-000-template.md` — шаблон, не является записью.
 
@@ -242,6 +245,7 @@ deprecation-запись может ссылаться на ADR, вводящи�
 | ADR-005 | DocumentIndexPlan | accepted | 5 |
 | ADR-006 | Server-side Terms | accepted | 6 |
 | ADR-007 | Client AbortController | accepted | 7 |
+| ADR-008 | Read-side SQL cleanup | accepted | 8 |
 
 ### Superseded
 

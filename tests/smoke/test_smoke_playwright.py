@@ -703,13 +703,12 @@ def test_document_view_mode_switch(
 
     # 3. Ожидаем рендер (кнопка «Рендер» активна после загрузки).
     admin_page.wait_for_function(
-        """() => {
+        f"""() => {{
             const b = document.querySelector(
-                "[data-panel-id='%s'] .page-view-switch button[data-view-mode='render']"
+                "[data-panel-id='{panel_id}'] .page-view-switch button[data-view-mode='render']"
             );
             return b && b.classList.contains('active');
-        }"""
-        % panel_id,
+        }}""",
         timeout=5000,
     )
     render_class = render_btn.get_attribute("class") or ""
@@ -718,13 +717,12 @@ def test_document_view_mode_switch(
     # 4. Переключение в текстовый режим.
     text_btn.click()
     admin_page.wait_for_function(
-        """() => {
+        f"""() => {{
             const b = document.querySelector(
-                "[data-panel-id='%s'] .page-view-switch button[data-view-mode='text']"
+                "[data-panel-id='{panel_id}'] .page-view-switch button[data-view-mode='text']"
             );
             return b && b.classList.contains('active');
-        }"""
-        % panel_id,
+        }}""",
         timeout=5000,
     )
     text_class = text_btn.get_attribute("class") or ""

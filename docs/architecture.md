@@ -63,6 +63,10 @@ Deep Doc Search (DDS) — расширяемая система полнотек
   per-tab для отмены pending fetch, ``<template>`` для клиентского
   рендеринга строк таблицы, разбиение ``SearchRenderer.renderResults``
   на оркестратор + 4 хелпера, cache-busting тем.
+- **Read-side SQL cleanup (Фаза 8, ADR-008)** — read-side доступ
+  к документам выведен из application-слоя в
+  ``SqliteDocumentRepository`` через Protocol ``IDocumentRepository``.
+  Симметрия с write-side (``IIndexWriter``, ADR-005).
 
 Дополнительно внедрена **событийная модель** для логирования, мониторинга
 и обновления интерфейса в реальном времени.
@@ -120,6 +124,7 @@ Deep Doc Search (DDS) — расширяемая система полнотек
 │     event_bus, logging_subscriber,              │
 │     sqlite_reference_repository,                │
 │     sqlite_index_writer,                        │
+│     sqlite_document_repository,                 │
 │     process_task_runner)                        │
 │                                                 │
 │    Реализует интерфейсы из domain/interfaces.py │
@@ -140,7 +145,10 @@ Deep Doc Search (DDS) — расширяемая система полнотек
   `pymupdf_text_extractor.py`.
 - Сканирование каталога — `file_scanner.py`.
 - Запись в БД — `sqlite_adapter.py`.
-- Запись планов индексации — `sqlite_index_writer.py`.
+- **Запись планов индексации** — `sqlite_index_writer.py`.
+- **Read-side доступ к документам** (поиск по хешу/пути, чтение
+  метаданных и текста страниц) — `sqlite_document_repository.py`
+  (Фаза 8, ADR-008).
 - Публикация событий — `event_bus.py`.
 - Логирование через события — `logging_subscriber.py`.
 - Выполнение subprocess-задач — `process_task_runner.py`.
@@ -1311,12 +1319,16 @@ middleware `auto_login_middleware` при успешном создании се
 
 ## Известные ограничения
 
-- **Read-side SQL** в application (`TextIndexer.get_document_metadata`,
-  `MetadataFilterQueryBuilder.build`, `DocumentCache.load`) —
-  рефакторинг в Фазе 8.
-- **`normalize_search_query`** не экранирует токены со спецсимволами
-  FTS5 (`-`, `+`, `*`). Запрос `EC-423-1` парсится FTS5 как
-  `ec-423-1` → ошибка `no such column: 423`. Фикс — в Фазе 8.
+- **Read-side SQL** в application — **устранён** в Фазе 8 (ADR-008):
+  `TextIndexer`, `SearchEngine`, `DocumentCache` работают через
+  `IDocumentRepository`. `MetadataFilterQueryBuilder` **остаётся**
+  shared helper в application — SQL-фрагменты используются только
+  из infrastructure (`FTS5SearchBackend`); перенос отложен (низкий
+  приоритет).
+- **`normalize_search_query`** экранирует FTS5-спецсимволы (Фаза 8):
+  токены со символами `-`, `+`, `:`, `^`, `(){}`, `"` оборачиваются
+  в двойные кавычки. Trailing `*` отбрасывается при наличии
+  спецсимволов (задокументированное ограничение).
 - **FTS5 `snippet()` при multi-term OR** на многостраничном документе
   может вернуть сниппет не той страницы. Ограничение FTS5,
   обойдено в тестах; не влияет на production-поиск по однозначным

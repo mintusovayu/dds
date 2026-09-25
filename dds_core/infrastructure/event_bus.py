@@ -91,7 +91,7 @@ class Subscription:
 
     def __init__(
         self,
-        bus: "AsyncEventBus",  # noqa: UP037
+        bus: AsyncEventBus,
         event_types: set[str] | None,
         max_queue_size: int,
     ) -> None:

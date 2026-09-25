@@ -141,6 +141,9 @@ from dds_core.infrastructure.fts5_search_backend import FTS5SearchBackend
 from dds_core.infrastructure.process_task_runner import ProcessTaskRunner
 from dds_core.infrastructure.pymupdf_text_extractor import PyMuPDFTextExtractor
 from dds_core.infrastructure.sqlite_adapter import SQLiteAdapter
+from dds_core.infrastructure.sqlite_document_repository import (
+    SqliteDocumentRepository,
+)
 
 # =====================================================================
 # Константы
@@ -422,6 +425,10 @@ def search_engine(bench_tmp_root: Path) -> Iterator[SearchEngine]:
     (:func:`_bulk_populate_search_db`). После завершения сессии
     адаптер закрывается.
 
+    Read-side доступ к документам делегируется
+    ``SqliteDocumentRepository`` (Фаза 8, ADR-008): SQL-строки для
+    чтения метаданных и текста страниц выведены из application-слоя.
+
     Args:
         bench_tmp_root: Временный каталог.
 
@@ -443,7 +450,7 @@ def search_engine(bench_tmp_root: Path) -> Iterator[SearchEngine]:
     # 3. Адаптер + движок для бенчмарка.
     adapter = SQLiteAdapter(str(db_path))
     backend = FTS5SearchBackend(adapter)
-    engine = SearchEngine(backend, adapter)
+    engine = SearchEngine(backend, SqliteDocumentRepository(adapter))
     try:
         yield engine
     finally:
@@ -798,7 +805,7 @@ def test_highlights_500_words(
             apply_transform=None,
         )
 
-    highlights, flip, confidence = benchmark(run)
+    highlights, _flip, _confidence = benchmark(run)
 
     # Валидация setup: все термины присутствуют в тексте.
     assert isinstance(highlights, list)

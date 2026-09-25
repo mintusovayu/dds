@@ -67,6 +67,7 @@
 #                                          из YAML в Фазе 7 по grace)
 #   - ADR-006 (Server-side Terms)        — записей нет
 #   - ADR-007 (Client cleanup)           — записей нет (только JS/HTML)
+#   - ADR-008 (Read-side SQL cleanup)    — записи Фазы 8 (актуальны)
 #
 # =====================================================================
 # ПРАВИЛА ВЕДЕНИЯ ФАЙЛА:
@@ -91,17 +92,59 @@
 #    удалением следует запустить check_module_compatibility.py.
 #
 # =====================================================================
-# ПРИМЕЧАНИЕ О ФАЗЕ 7 (ADR-007, Client cleanup):
+# ПРИМЕЧАНИЕ О ФАЗЕ 8 (ADR-008, Read-side SQL cleanup):
 #
-#   Новых записей в этом файле не добавлено. Фаза 7 затронула
-#   исключительно presentation layer (JavaScript и HTML-шаблоны):
-#   `dds_web/static/js/{app,document,search,theme_manager}.js`,
-#   `dds_web/templates/main.html`. Python-символы ядра не удалялись
-#   и не добавлялись. ``dds_modules/`` не затронуты.
+#   Фаза 8 затронула три конструктора application-слоя:
+#   ``TextIndexer.__init__``, ``SearchEngine.__init__``,
+#   ``DocumentCache.__init__``. В каждом параметр ``db: IDatabase``
+#   заменён на ``document_repository: IDocumentRepository``.
 #
-#   Записи Фазы 5 (4 шт.) удалены из файла в Фазе 7 в соответствии
-#   с grace-периодом (5 + 2 = 7). Актуальных записей нет.
+#   Breaking change: кастомные реализации ``ITextIndexer`` (если
+#   появятся), а также прямой код, инстанцирующий эти классы с
+#   позиционным третьим аргументом ``IDatabase``, потребуют правки.
+#   В текущем проекте прямых потребителей, кроме
+#   ``dds_web/lifespan.py::create_components`` (обновлён в Фазе 8),
+#   нет. ``dds_modules/`` не затронуты — внешние модули работают
+#   через ``IModule`` / ``ISecondaryProcessor`` и не зависят от
+#   application-классов напрямую.
+#
 # =====================================================================
 
 entries:
-  # (пусто)
+  # -------------------------------------------------------------------
+  # Фаза 8 (ADR-008): Read-side SQL cleanup.
+  #
+  # Замена параметра ``db: IDatabase`` на
+  # ``document_repository: IDocumentRepository`` в трёх конструкторах
+  # application-слоя. SQL-строки read-side выведены из application
+  # и сосредоточены в infrastructure
+  # (``SqliteDocumentRepository``).
+  # -------------------------------------------------------------------
+
+  - symbol: dds_core.application.indexer.TextIndexer.__init__
+    type: direct_removal
+    module_users: []
+    removed_in_phase: 8
+    note: >
+      Параметр db (IDatabase) заменён на document_repository
+      (IDocumentRepository). Read-side доступ к документам
+      делегируется в репозиторий; application-слой не содержит
+      SQL-строк ни на запись, ни на чтение. См. ADR-008.
+
+  - symbol: dds_core.application.search_engine.SearchEngine.__init__
+    type: direct_removal
+    module_users: []
+    removed_in_phase: 8
+    note: >
+      Параметр db (IDatabase) заменён на document_repository
+      (IDocumentRepository). Методы get_document_info и get_page_text
+      делегируют чтение в репозиторий. См. ADR-008.
+
+  - symbol: dds_core.application.document_cache.DocumentCache.__init__
+    type: direct_removal
+    module_users: []
+    removed_in_phase: 8
+    note: >
+      Параметр db (IDatabase) заменён на document_repository
+      (IDocumentRepository). Метод load использует
+      IDocumentRepository.load_all(). См. ADR-008.

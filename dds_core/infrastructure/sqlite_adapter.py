@@ -586,7 +586,7 @@ class SQLiteAdapter:
     # Вспомогательные методы
     # ------------------------------------------------------------------
 
-    def ensure_table(self, name: str, schema: str) -> None:
+    def ensure_table(self, name: str, schema: str) -> None:  # noqa: ARG002
         """Создаёт таблицу если не существует.
 
         Args:

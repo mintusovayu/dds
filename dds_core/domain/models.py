@@ -96,7 +96,7 @@ FTS5. Причина: до Фазы 6 термины извлекались на
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -106,7 +106,7 @@ if TYPE_CHECKING:
 # ----------------------------------------------------------------------
 # Перечисления
 # ----------------------------------------------------------------------
-class ScanPhase(str, Enum):
+class ScanPhase(StrEnum):
     """
     Фаза сканирования.
     Attributes:
@@ -122,7 +122,7 @@ class ScanPhase(str, Enum):
     SECONDARY = "secondary"
 
 
-class ScanStatus(str, Enum):
+class ScanStatus(StrEnum):
     """
     Статус сканирования.
     Attributes:
@@ -140,7 +140,7 @@ class ScanStatus(str, Enum):
     ERROR = "error"
 
 
-class ModuleStatus(str, Enum):
+class ModuleStatus(StrEnum):
     """
     Статус модуля.
     Attributes:
@@ -165,7 +165,7 @@ class ModuleStatus(str, Enum):
     REMOVED = "removed"
 
 
-class IndexState(str, Enum):
+class IndexState(StrEnum):
     """
     Состояние индексации системы.
     Определяется на основе фактических данных в БД и файловой
@@ -194,7 +194,7 @@ class IndexState(str, Enum):
     NO_SOURCE_FILES = "no_source_files"
 
 
-class HashOutcome(str, Enum):
+class HashOutcome(StrEnum):
     """
     Результат операции ленивого хеширования файла.
     Определяет дальнейшую судьбу файла в конвейере сканирования
@@ -275,6 +275,36 @@ class DocumentInfo:
     page_count: int = 0
     indexed_at: str = ""
     last_modified: str = ""
+
+
+@dataclass(frozen=True)
+class DocumentMetadata:
+    """Метаданные документа для ленивого хеширования.
+
+    Подмножество :class:`Document`, необходимое для проверки
+    «изменился ли файл» на этапе хеширования: сравнение
+    ``cached_size``/``cached_mtime`` с текущими значениями
+    файловой системы.
+
+    Используется ``IDocumentRepository.get_metadata`` и
+    ``IDocumentRepository.load_all`` вместо прежних
+    tuple-представлений (``tuple[str, str, int, str]``).
+    Типизация через dataclass устраняет риск перепутать порядок
+    полей и делает код самодокументируемым.
+
+    Attributes:
+        doc_id: Идентификатор документа.
+        file_hash: Хеш файла (SHA-256).
+        cached_size: Размер файла в байтах на момент последней
+            индексации.
+        cached_mtime: Дата последнего изменения файла (ISO 8601)
+            на момент последней индексации.
+    """
+
+    doc_id: str
+    file_hash: str
+    cached_size: int
+    cached_mtime: str
 
 
 # ----------------------------------------------------------------------
@@ -620,7 +650,7 @@ class ModuleConfig:
 
     db_path: str
     parameters: dict[str, object] = field(default_factory=dict)
-    event_bus: "IEventBus | None" = None  # noqa: UP037
+    event_bus: IEventBus | None = None
 
     def get(self, key: str, default: object = None) -> object:
         """

@@ -306,10 +306,10 @@ class ModuleLoader:
         # Шаг 4: Инициализация
         try:
             module.initialize(module_config)
-        except Exception:
+        except Exception as e:
             # Откат: попытка cleanup
             self._rollback_module(module, manifest)
-            raise RuntimeError(f"Модуль '{manifest.module_name}': ошибка инициализации.")
+            raise RuntimeError(f"Модуль '{manifest.module_name}': ошибка инициализации.") from e
 
         # Шаг 5: Проверка managed_tables
         managed_tables = module.get_managed_tables()
@@ -699,7 +699,7 @@ class ModuleLoader:
 
             try:
                 self._db.execute_write(migrations[target_version])
-            except Exception:
+            except Exception as e:
                 # Записать статус MIGRATION_ERROR
                 self.update_module_status(
                     manifest.module_name,
@@ -708,7 +708,7 @@ class ModuleLoader:
                 )
                 raise RuntimeError(
                     f"Модуль '{manifest.module_name}': ошибка миграции до версии {target_version}."
-                )
+                ) from e
 
     def _register_module(
         self,

@@ -58,6 +58,16 @@ DocumentIndexPlan (Фаза 5, ADR-005):
 SQL-строки формировались в ``application/query_builder.py``;
 теперь SQL-специфика сосредоточена в infrastructure-слое.
 
+Read-side SQL cleanup (Фаза 8, ADR-008):
+Read-side доступ к документам (поиск по хешу и пути, чтение
+метаданных и текста страниц) делегируется
+``SqliteDocumentRepository`` (реализация
+``IDocumentRepository``). ``SqliteDocumentRepository`` создаётся
+в ``create_components`` и передаётся в ``TextIndexer``,
+``SearchEngine`` и ``DocumentCache``. До Фазы 8 SQL-строки для
+чтения находились в application-слое; теперь application-слой
+не содержит SQL ни на запись (ADR-005), ни на чтение (ADR-008).
+
 Фильтрация по метаданным:
 При старте приложения создаются репозитории справочников
 (объектов, дисциплин, типов документов) и сервис обновления
@@ -207,6 +217,9 @@ from dds_core.infrastructure.pymupdf_text_extractor import (
     PyMuPDFTextExtractor,
 )
 from dds_core.infrastructure.sqlite_adapter import SQLiteAdapter
+from dds_core.infrastructure.sqlite_document_repository import (
+    SqliteDocumentRepository,
+)
 from dds_core.infrastructure.sqlite_index_writer import SqliteIndexWriter
 from dds_core.infrastructure.sqlite_reference_repository import (
     SqliteReferenceRepository,
@@ -297,9 +310,10 @@ def create_components(
 
     Включая компоненты фильтрации по метаданным, инициализацию
     справочников из JSON, ``SqliteIndexWriter`` для записи планов
-    индексации и передачу исполнителя subprocess-задач
-    (``process_runner``) вместе с worker'ом (``index_plan_worker``)
-    в ``ScanOrchestrator``.
+    индексации, ``SqliteDocumentRepository`` для read-side доступа
+    к документам (Фаза 8, ADR-008) и передачу исполнителя
+    subprocess-задач (``process_runner``) вместе с worker'ом
+    (``index_plan_worker``) в ``ScanOrchestrator``.
 
     Операции:
 
@@ -317,14 +331,16 @@ def create_components(
     | 4 | Создание инфраструктурных компонентов:              |
     |   | ``DirectoryScanner``, ``FileHasher``,               |
     |   | ``PyMuPDFTextExtractor``, ``FTS5SearchBackend``,    |
-    |   | ``SqliteIndexWriter``.                              |
+    |   | ``SqliteIndexWriter``, ``SqliteDocumentRepository``.|
     +---+-----------------------------------------------------+
     | 5 | Создание application-компонентов:                   |
     |   | ``TextIndexer`` (с ``SqliteIndexWriter`` и          |
-    |   | ``IDatabase``), ``SearchEngine``,                   |
-    |   | ``ModuleLifecycle``, ``ScanOrchestrator``.          |
+    |   | ``IDocumentRepository``), ``SearchEngine`` (с       |
+    |   | ``IDocumentRepository``), ``ModuleLifecycle``,      |
+    |   | ``ScanOrchestrator``.                               |
     +---+-----------------------------------------------------+
-    | 6 | Создание ``DocumentCache`` и передача его в         |
+    | 6 | Создание ``DocumentCache`` (с                       |
+    |   | ``IDocumentRepository``) и передача его в           |
     |   | ``ScanOrchestrator``.                               |
     +---+-----------------------------------------------------+
     | 7 | Создание репозиториев справочников и сервисов       |
@@ -396,8 +412,14 @@ def create_components(
     index_writer = SqliteIndexWriter(db)
 
     # Application-компоненты
-    indexer = TextIndexer(text_extractor, index_writer, db)
-    search_engine = SearchEngine(search_backend, db)
+    #
+    # Read-side доступ к документам делегируется
+    # SqliteDocumentRepository (Фаза 8, ADR-008). SQL-строки
+    # для чтения метаданных и текста страниц выведены из
+    # application-слоя.
+    document_repository = SqliteDocumentRepository(db)
+    indexer = TextIndexer(text_extractor, index_writer, document_repository)
+    search_engine = SearchEngine(search_backend, document_repository)
 
     # Модульный загрузчик и проверка зависимостей
     module_loader = ModuleLoader(db, modules_directory)
@@ -411,7 +433,7 @@ def create_components(
         checker=dependency_checker,
     )
 
-    document_cache = DocumentCache(db)
+    document_cache = DocumentCache(document_repository)
 
     # Репозитории справочников (основная таблица + таблица псевдонимов)
     object_repo = SqliteReferenceRepository(
@@ -464,6 +486,7 @@ def create_components(
         "scanner": scanner,
         "hasher": hasher,
         "text_extractor": text_extractor,
+        "document_repository": document_repository,
         "indexer": indexer,
         "search_engine": search_engine,
         "module_lifecycle": module_lifecycle,
@@ -1173,7 +1196,7 @@ def create_app_with_lifespan(config_path: str) -> FastAPI:
     # ── Exception handler для LoginRequiredException ──
     @app.exception_handler(LoginRequiredException)
     async def login_required_handler(
-        request: Request,
+        request: Request,  # noqa: ARG001 — контракт FastAPI exception_handler
         exc: LoginRequiredException,
     ) -> RedirectResponse:
         redirect_path = exc.redirect_path

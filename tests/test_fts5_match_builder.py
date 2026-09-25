@@ -384,9 +384,15 @@ def test_build_match_expression_complex_query() -> None:
 
 
 def test_build_match_expression_latin_codes() -> None:
-    """Технические коды ``EC-423-1`` нормализуются (только lower).
+    """Технические коды ``EC-423-1`` экранируются как phrase-термин.
 
-    Латиница не меняется; дефисы и цифры сохраняются.
+    Фаза 8 (ADR-008): слова со спецсимволами FTS5 (в данном случае
+    дефис) оборачиваются в двойные кавычки — устраняет ошибку
+    ``no such column: 423``, которая возникала при парсинге
+    запроса ``EC-423-1`` как ``ec`` ``-`` ``423`` ``-`` ``1``.
+
+    Латиница не меняется (lower + кириллица → латиница);
+    дефисы и цифры сохраняются внутри кавычек.
 
     Список токенов аннотирован ``list[QueryToken]``: гетерогенный
     список ``[WordToken, OperatorToken, WordToken]`` иначе выводится
@@ -397,7 +403,7 @@ def test_build_match_expression_latin_codes() -> None:
         OperatorToken(op="OR"),
         WordToken(text="ec-423-1"),
     ]
-    expected = "normalized_text: ec-423-1 OR normalized_text: ec-423-1"
+    expected = 'normalized_text: "ec-423-1" OR normalized_text: "ec-423-1"'
     assert build_match_expression(tokens) == expected
 
 
@@ -419,10 +425,12 @@ def test_normalize_search_query_docstring_example_1() -> None:
 def test_normalize_search_query_docstring_example_2() -> None:
     """Пример 2 из docstring: скобки, OR, NOT, коды.
 
-    Латиница не меняется; скобки и операторы переносятся как есть.
+    Фаза 8 (ADR-008): слова с дефисами экранируются как
+    phrase-термины. Латиница не меняется; скобки и операторы
+    переносятся как есть.
     """
     assert normalize_search_query("(ЕС-423-1 OR EC-423-1) NOT KM") == (
-        "( normalized_text: ec-423-1 OR normalized_text: ec-423-1 ) NOT normalized_text: km"
+        '( normalized_text: "ec-423-1" OR normalized_text: "ec-423-1" ) NOT normalized_text: km'
     )
 
 
@@ -588,3 +596,120 @@ def test_build_match_expression_does_not_mutate_tokens() -> None:
     _ = build_match_expression(tokens)
 
     assert tokens == snapshot
+
+
+# ----------------------------------------------------------------------
+# Раздел: Экранирование FTS5-спецсимволов (Фаза 8, ADR-008)
+# ----------------------------------------------------------------------
+#
+# До Фазы 8 функция build_match_expression не экранировала токены,
+# содержащие FTS5-спецсимволы. Запрос EC-423-1 нормализовался в
+# "normalized_text: ec-423-1", что FTS5 парсил как ec - 423 - 1
+# и падал с ошибкой "no such column: 423".
+#
+# Функция _build_word_match оборачивает такие токены в двойные
+# кавычки (FTS5-quoting) с удвоением внутренних ". Trailing *
+# сохраняет prefix-семантику для токенов без спецсимволов.
+
+
+def test_word_with_hyphen_is_quoted() -> None:
+    """Слово с дефисом оборачивается в двойные кавычки."""
+    tokens = [WordToken(text="EC-423-1")]
+    result = build_match_expression(tokens)
+    assert result == 'normalized_text: "ec-423-1"'
+
+
+def test_word_with_plus_is_quoted() -> None:
+    """Слово с плюсом оборачивается в двойные кавычки."""
+    tokens = [WordToken(text="A+B")]
+    result = build_match_expression(tokens)
+    assert result == 'normalized_text: "a+b"'
+
+
+def test_word_with_colon_is_quoted() -> None:
+    """Слово с двоеточием оборачивается в двойные кавычки."""
+    tokens = [WordToken(text="col:value")]
+    result = build_match_expression(tokens)
+    assert result == 'normalized_text: "col:value"'
+
+
+def test_word_with_caret_is_quoted() -> None:
+    """Слово с циркумфлексом оборачивается в двойные кавычки."""
+    tokens = [WordToken(text="^EC")]
+    result = build_match_expression(tokens)
+    assert result == 'normalized_text: "^ec"'
+
+
+def test_word_with_braces_is_quoted() -> None:
+    """Слово с фигурными скобками оборачивается в двойные кавычки."""
+    tokens = [WordToken(text="a{b}c")]
+    result = build_match_expression(tokens)
+    assert result == 'normalized_text: "a{b}c"'
+
+
+def test_word_with_inner_quote_is_escaped() -> None:
+    """Внутренние " удваиваются при оборачивании в кавычки.
+
+    Согласно синтаксису FTS5, чтобы включить двойную кавычку
+    внутрь phrase-термина, её нужно удвоить ("").
+    """
+    tokens = [WordToken(text='a"b')]
+    result = build_match_expression(tokens)
+    assert result == 'normalized_text: "a""b"'
+
+
+def test_plain_cyrillic_word_not_quoted() -> None:
+    """Слово без спецсимволов не оборачивается в кавычки."""
+    tokens = [WordToken(text="гидрошпонка")]
+    result = build_match_expression(tokens)
+    assert result == "normalized_text: гидpoшпohka"
+
+
+def test_word_with_trailing_star_keeps_prefix_semantics() -> None:
+    """Trailing * сохраняет prefix-семантику для слова без спецсимволов."""
+    tokens = [WordToken(text="гидро*")]
+    result = build_match_expression(tokens)
+    assert result == "normalized_text: гидpo*"
+
+
+def test_word_with_hyphen_and_trailing_star_drops_prefix() -> None:
+    """Trailing * отбрасывается при наличии спецсимволов в токене.
+
+    Осознанное ограничение (см. docstring _build_word_match):
+    prefix-поиск после unicode61-токенизации токена со
+    спецсимволами не имеет однозначной семантики.
+    """
+    tokens = [WordToken(text="EC-423-*")]
+    result = build_match_expression(tokens)
+    assert result == 'normalized_text: "ec-423-"'
+
+
+def test_phrase_with_hyphen_not_modified() -> None:
+    """PhraseToken с дефисом не экранируется — фраза уже в кавычках.
+
+    Дополнительное экранирование внутри фразы не применяется:
+    токенизатор не позволяет " внутри PhraseToken.text.
+    """
+    tokens = [PhraseToken(text="EC-423-1")]
+    result = build_match_expression(tokens)
+    assert result == 'normalized_text: "ec-423-1"'
+
+
+def test_normalize_search_query_with_hyphenated_code() -> None:
+    """Интеграционная проверка: normalize_search_query не падает на EC-423-1."""
+    result = normalize_search_query("EC-423-1")
+    assert result == 'normalized_text: "ec-423-1"'
+
+
+def test_normalize_search_query_with_prefix_and_special_chars() -> None:
+    """Префиксный поиск без спецсимволов работает как раньше."""
+    result = normalize_search_query("гидро*")
+    assert result == "normalized_text: гидpo*"
+
+
+def test_normalize_search_query_parens_with_hyphenated_codes() -> None:
+    """Комбинированный запрос: скобки + дефисные коды + оператор NOT."""
+    result = normalize_search_query("(EC-423-1 OR EC-423-1) NOT KM")
+    assert result == (
+        '( normalized_text: "ec-423-1" OR normalized_text: "ec-423-1" ) NOT normalized_text: km'
+    )

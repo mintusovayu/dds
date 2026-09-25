@@ -155,7 +155,7 @@ import re
 import secrets
 import time
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated
 
 try:
@@ -163,7 +163,7 @@ try:
 except ImportError:
     raise ImportError(
         "Для запуска веб-интерфейса DDS необходимо установить fastapi: pip install fastapi"
-    )
+    ) from None
 
 from dds_core.domain import config as core_config
 
@@ -210,7 +210,7 @@ _HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 # ----------------------------------------------------------------------
 
 
-class LoginRequiredException(Exception):
+class LoginRequiredException(Exception):  # noqa: N818 — Exception-суффикс
     """Исключение, сигнализирующее о необходимости авторизации.
 
     Выбрасывается зависимостью ``require_login`` при отсутствии
@@ -249,7 +249,7 @@ class LoginRequiredException(Exception):
 # ----------------------------------------------------------------------
 
 
-class UserRole(str, Enum):
+class UserRole(StrEnum):
     """Роль пользователя.
 
     +----------------------------------+----------------------------------+

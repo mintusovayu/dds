@@ -161,8 +161,7 @@ Pylance/mypy проверяют, что экземпляр стаба присв
 from __future__ import annotations
 
 import asyncio
-import threading
-from collections.abc import Callable, Coroutine, Iterator
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -176,6 +175,7 @@ from dds_core.domain.models import ScanStatus
 from dds_core.infrastructure.database import DatabaseManager
 from dds_core.infrastructure.event_bus import AsyncEventBus
 from dds_core.infrastructure.sqlite_adapter import SQLiteAdapter
+from tests._async_helpers import _run
 
 # =====================================================================
 # Константы
@@ -207,71 +207,6 @@ _EXECUTOR_MAX_WORKERS = 2
 """
 
 _T = TypeVar("_T")
-
-
-# =====================================================================
-# Helpers
-# =====================================================================
-
-
-def _run(coro: Coroutine[Any, Any, _T]) -> _T:
-    """Запускает корутину в отдельном потоке с собственным event loop.
-
-    **Зачем отдельный поток, а не прямой ``asyncio.run()``.**
-    ``pytest-asyncio`` в режиме ``auto`` оборачивает тесты в общий
-    event loop. При полном прогоне набора (300+ тестов) running loop
-    остаётся активным в главном потоке от предыдущих async-тестов
-    (баг ``pytest-asyncio`` 1.4.0 + Python 3.14). Прямой
-    ``asyncio.run(coro)`` в этом случае падает с
-    ``RuntimeError: asyncio.run() cannot be called from a running
-    event loop`` — даже для полностью sync-теста, не имеющего
-    отношения к asyncio.
-
-    Отдельный поток не имеет running loop по определению —
-    ``asyncio.run(coro)`` внутри него всегда создаёт свежий loop.
-    Это изолирует тесты ``ScanPipeline`` от состояния, оставленного
-    другими тестами, и не требует ни правок pytest-asyncio
-    конфигурации, ни изменения production-кода.
-
-    **Оверхед.** Один ``threading.Thread`` на тест (~10 мкс на
-    создание) — на 5 тестов меньше 0.1 мс суммарно. Все тесты
-    укладываются в ~3 секунды (подтверждено прогоном в изоляции).
-
-    **Аннотация ``Coroutine[Any, Any, _T]``.** Соответствует
-    typeshed: ``asyncio.run`` принимает именно ``Coroutine``, а не
-    произвольный ``Awaitable``. Все вызовы ``_run`` — от ``async
-    def``-функций, поэтому сужение типа корректно.
-
-    **Проброс исключений.** Исключение из корутины сохраняется в
-    списке ``errors`` и поднимается в главном потоке. ``pytest.raises``
-    в вызывающем тесте видит его как обычно.
-
-    Args:
-        coro: Корутина для выполнения.
-
-    Returns:
-        Результат корутины.
-
-    Raises:
-        BaseException: Любое исключение, поднятое корутиной.
-    """
-    results: list[_T] = []
-    errors: list[BaseException] = []
-
-    def _target() -> None:
-        try:
-            results.append(asyncio.run(coro))
-        except BaseException as e:  # noqa: BLE001 — проброс через границу потока
-            errors.append(e)
-
-    thread = threading.Thread(target=_target)
-    thread.start()
-    thread.join()
-
-    if errors:
-        raise errors[0]
-    return results[0]
-
 
 # =====================================================================
 # Заглушки

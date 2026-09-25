@@ -51,14 +51,16 @@ src = ["dds_core", "dds_web", "tools", "tests"]
 select = [
     "E", "F", "W",   # pycodestyle + pyflakes
     "I",             # isort
-    # "N",             # pep8-naming
-    # "UP",            # pyupgrade
-    # "B",             # flake8-bugbear
-    # "C4",            # flake8-comprehensions
-    # "SIM",           # flake8-simplify
-    # "ARG",           # flake8-unused-arguments
-    # "PTH",           # flake8-use-pathlib
-    # "RUF",           # ruff-specific
+    "N",             # pep8-naming
+    "UP",            # pyupgrade
+    "B",             # flake8-bugbear
+    "C4",            # flake8-comprehensions
+    "SIM",           # flake8-simplify
+    "ARG",           # flake8-unused-arguments
+    "RUF",           # ruff-specific
+    # "PTH",         # flake8-use-pathlib: отложено на отдельную сессию
+    #                # — правило косметическое, объём правок
+    #                # (os.path → pathlib.Path) превышает 30 файлов.
 ]
 ignore = [
     "E501",          # line length — контролируется formatter'ом
@@ -66,11 +68,33 @@ ignore = [
     "RUF001",        # гомоглифы кириллица/латиница — ожидаемы в русскоязычном проекте
     "RUF002",        # то же для docstrings
     "RUF003",        # то же для комментариев
+    # UP047 (non-pep695-generic-function): автозамена TypeVar → PEP 695
+    # помечена ruff как unsafe. В helper'ах с сигнатурой
+    # `Callable[[X], Coroutine[Any, Any, _T]] -> _T` (см. `_with_runner`
+    # в тестах ProcessTaskRunner и `_run` в tests/_async_helpers.py)
+    # преобразование неполное — остаются висячие ссылки на `_T`,
+    # приводящие к NameError при импорте. Текущий TypeVar-стиль
+    # корректен и полностью эквивалентен по семантике.
+    "UP047",
+    # SIM105 (suppressible-exception): замена `try/except/pass` на
+    # `with contextlib.suppress(...)`. В 22 местах проекта блоки
+    # `except` содержат комментарии, объясняющие причину подавления
+    # (например, «пул закрыт, ошибка не критична», «сохранение
+    # артефакта не должно маскировать падение»). Автозамена теряет
+    # эти комментарии, снижая информативность кода. Текущий стиль
+    # `try/except/pass` с комментарием внутри `except` — осознанный
+    # выбор в пользу явной диагностики.
+    "SIM105",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ARG001", "ARG002", "S101"]  # pytest fixtures, assert
 "tools/**/*.py" = ["T201"]                       # print в CLI-утилитах
+# Protocol-файлы: параметры stub-методов (`...`) нужны для контракта,
+# но не используются в теле. ARG002 — unused method argument.
+"dds_core/domain/interfaces.py" = ["ARG002"]
+"dds_core/domain/index_writer.py" = ["ARG002"]
+"dds_core/domain/reference_repository.py" = ["ARG002"]
 
 
 # ---------------------------------------------------------------------

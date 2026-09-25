@@ -477,7 +477,4 @@ class HighlightsService:
             ``word_no`` (шаг ровно 1). ``False`` при наличии
             разрыва.
         """
-        for k in range(len(window) - 1):
-            if window[k + 1].word_no != window[k].word_no + 1:
-                return False
-        return True
+        return all(window[k + 1].word_no == window[k].word_no + 1 for k in range(len(window) - 1))

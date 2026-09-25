@@ -112,7 +112,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import threading
 import time
 from collections.abc import Callable, Coroutine
 from pathlib import Path
@@ -120,6 +119,7 @@ from typing import Any, TypeVar
 
 import pytest
 from dds_core.infrastructure.process_task_runner import ProcessTaskRunner
+from tests._async_helpers import _run
 
 # =====================================================================
 # Константы
@@ -247,66 +247,6 @@ def _sleep_and_record(
 # =====================================================================
 # Helpers
 # =====================================================================
-
-
-def _run(coro: Coroutine[Any, Any, _T]) -> _T:
-    """Запускает корутину в отдельном потоке с собственным event loop.
-
-    **Зачем отдельный поток, а не прямой ``asyncio.run()``.**
-    ``pytest-asyncio`` в режиме ``auto`` оборачивает тесты в общий
-    event loop. При полном прогоне набора (300+ тестов) running loop
-    остаётся активным в главном потоке от предыдущих async-тестов
-    (баг ``pytest-asyncio`` 1.4.0 + Python 3.14). Прямой
-    ``asyncio.run(coro)`` в этом случае падает с
-    ``RuntimeError: asyncio.run() cannot be called from a running
-    event loop`` — даже для полностью sync-теста, не имеющего
-    отношения к asyncio.
-
-    Отдельный поток не имеет running loop по определению —
-    ``asyncio.run(coro)`` внутри него всегда создаёт свежий loop.
-    Это изолирует тесты ``ProcessTaskRunner`` от состояния,
-    оставленного другими тестами, и не требует ни правок
-    pytest-asyncio конфигурации, ни изменения production-кода.
-
-    **Оверхед.** Один ``threading.Thread`` на тест (~10 мкс на
-    создание) — на 25 тестов это меньше 1 мс суммарно. Создание
-    forkserver'а — ~200 мс, поток на его фоне пренебрежим.
-
-    **Аннотация ``Coroutine[Any, Any, _T]``.** Соответствует
-    typeshed: ``asyncio.run`` принимает именно ``Coroutine``, а не
-    произвольный ``Awaitable``. Все вызовы ``_run`` — от ``async
-    def``-функций (или от ``_with_runner``, возвращающего корутину),
-    поэтому сужение типа корректно.
-
-    **Проброс исключений.** Исключение из корутины сохраняется в
-    списке ``errors`` и поднимается в главном потоке. ``pytest.raises``
-    в вызывающем тесте видит его как обычно.
-
-    Args:
-        coro: Корутина для выполнения.
-
-    Returns:
-        Результат корутины.
-
-    Raises:
-        BaseException: Любое исключение, поднятое корутиной.
-    """
-    results: list[_T] = []
-    errors: list[BaseException] = []
-
-    def _target() -> None:
-        try:
-            results.append(asyncio.run(coro))
-        except BaseException as e:  # noqa: BLE001 — проброс через границу потока
-            errors.append(e)
-
-    thread = threading.Thread(target=_target)
-    thread.start()
-    thread.join()
-
-    if errors:
-        raise errors[0]
-    return results[0]
 
 
 async def _with_runner(
@@ -499,7 +439,7 @@ def test_run_with_lambda_raises_runtime_error() -> None:
     async def _body(runner: ProcessTaskRunner) -> None:
         with pytest.raises(RuntimeError, match="not picklable"):
             await runner.run(
-                lambda x: x,  # noqa: E731
+                lambda x: x,
                 1,
                 timeout=_TEST_TIMEOUT,
             )

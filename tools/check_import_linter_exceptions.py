@@ -556,10 +556,7 @@ def print_report(
     print(f"Current phase: {current_phase}")
     print(f"Exceptions: {total} (permanent: {permanent}, temporary: {temporary})")
     for rec in records:
-        if rec.permanent:
-            label = "permanent"
-        else:
-            label = f"removed by phase {rec.phase_removed_by}"
+        label = "permanent" if rec.permanent else f"removed by phase {rec.phase_removed_by}"
         print(f"  - [{rec.contract}] {rec.import_spec}  ({label})")
 
     if warnings:

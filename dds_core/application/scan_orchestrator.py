@@ -841,8 +841,10 @@ class ScanOrchestrator:
             )
             return {}
 
-        # Callback для публикации прогресса по модулям
-        def on_module_progress(module_name, processed, total, current_doc_id):
+        # Callback для публикации прогресса по модулям.
+        # `current_doc_id` не используется — сигнатура обязательна
+        # по контракту `IModuleLifecycle.run_secondary_scans(on_progress=...)`.
+        def on_module_progress(module_name, processed, total, current_doc_id):  # noqa: ARG001
             self._event_bus.publish(
                 ScanSecondaryProgressUpdated(
                     correlation_id=self._current_correlation_id,
@@ -1101,7 +1103,7 @@ class ScanOrchestrator:
     # Кэшированное состояние индексации
     # ------------------------------------------------------------------
 
-    def get_cached_index_status(self, rd_directory: str) -> IndexStatus:
+    def get_cached_index_status(self, rd_directory: str) -> IndexStatus:  # noqa: ARG002
         """
         Возвращает кэшированное состояние индексации.
 
@@ -1218,9 +1220,11 @@ class ScanOrchestrator:
             with self._index_status_lock:
                 if self._index_status_at > 0:
                     elapsed = time.monotonic() - self._index_status_at
-                    if elapsed < config.INDEX_STATUS_MIN_REFRESH_INTERVAL_SECONDS:  # noqa: SIM102
-                        if self._index_status_cache is not None:
-                            return self._index_status_cache
+                    if (
+                        elapsed < config.INDEX_STATUS_MIN_REFRESH_INTERVAL_SECONDS
+                        and self._index_status_cache is not None
+                    ):
+                        return self._index_status_cache
 
         # Тяжёлый расчёт
         result = self._calculate_index_status(rd_directory)

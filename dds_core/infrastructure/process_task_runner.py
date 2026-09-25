@@ -177,8 +177,9 @@ import queue
 import sys
 import threading
 import time
+from collections.abc import Callable
 from multiprocessing.process import BaseProcess
-from typing import Any, Callable, Literal, TypeVar
+from typing import Any, Literal, TypeVar
 
 from ..domain import config as core_config
 

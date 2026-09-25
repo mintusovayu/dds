@@ -137,7 +137,7 @@ except ImportError:
     raise ImportError(
         "Для запуска веб-интерфейса DDS необходимо установить "
         "fastapi и jinja2: pip install fastapi jinja2"
-    )
+    ) from None
 
 from dds_core.application.timeout_guard import run_with_timeout
 from dds_core.domain import config as core_config
@@ -647,7 +647,7 @@ async def login_submit(
         raise HTTPException(
             status_code=504,
             detail="Сервер перегружен. Попробуйте позже.",
-        )
+        ) from None
     except ValueError:
         from urllib.parse import quote
 

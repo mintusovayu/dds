@@ -295,7 +295,9 @@ class PyMuPDFTextDocument:
         try:
             return len(self._doc)
         except TypeError:
-            raise ValueError(f"Объект {type(self._doc).__name__} не является документом PyMuPDF.")
+            raise ValueError(
+                f"Объект {type(self._doc).__name__} не является документом PyMuPDF."
+            ) from None
 
     def get_page_text(self, page_index: int) -> str:
         """Извлекает текстовое содержимое страницы по индексу.

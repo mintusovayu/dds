@@ -5,7 +5,7 @@
 индексирование текстового слоя PDF-документов в базу данных DDS.
 Модуль находится в application layer и оркестрирует взаимодействие
 между инфраструктурными компонентами (``ITextExtractor``,
-``IIndexWriter``) и абстракцией чтения из БД (``IDatabase``).
+``IIndexWriter``) и абстракцией чтения (``IDocumentRepository``).
 
 Для индексирования используются два публичных метода:
 
@@ -20,7 +20,7 @@
 Это позволяет конвейеру сканирования накапливать подготовленные
 планы и записывать их пачками, снижая количество коммитов.
 
-Разделение записи и чтения (Фаза 5, ADR-005):
+Разделение записи и чтения (Фаза 5, ADR-005; завершено в Фазе 8):
 
 ``TextIndexer`` получает в конструктор два независимых интерфейса:
 
@@ -30,14 +30,18 @@
 | ``IIndexWriter``                 | Запись планов индексации и       |
 |                                  | удаление документов.             |
 +----------------------------------+----------------------------------+
-| ``IDatabase``                    | Поиск документов по хешу, пути;  |
-|                                  | чтение метаданных.               |
+| ``IDocumentRepository``          | Read-side доступ к документам:   |
+|                                  | поиск по хешу/пути, чтение       |
+|                                  | метаданных и текста страниц.     |
 +----------------------------------+----------------------------------+
 
-Такое разделение сохраняет Single Responsibility Principle:
-``IIndexWriter`` описывает write-контракт, ``IDatabase`` — общий
-контракт доступа к БД (в т.ч. для чтения). Рефакторинг read-side
-на специализированный интерфейс — задача Фазы 8.
+Фаза 5 (ADR-005) разделила write- и read-контракты для записи:
+SQL-строки для индексации вынесены в ``IIndexWriter``. Read-side
+в то время продолжал использовать ``IDatabase.execute(...)`` с
+SQL-строками в application-слое. Фаза 8 (ADR-008) завершает
+разделение: read-side делегируется в ``IDocumentRepository``,
+и application-слой больше не содержит SQL-строк ни на запись,
+ни на чтение.
 
 Инкапсуляция работы с документом:
 
@@ -63,8 +67,9 @@
 одновременно при параллельном сканировании через ``ScanPipeline``.
 Потокобезопасность записи в БД обеспечивается ``SQLiteAdapter``,
 который использует ``threading.Lock`` для сериализации операций
-записи. Сам индексатор не содержит изменяемого состояния,
-поэтому является потокобезопасным.
+записи. Потокобезопасность чтения обеспечивается пулом соединений
+``ConnectionPool``. Сам индексатор не содержит изменяемого
+состояния, поэтому является потокобезопасным.
 
 Расширение ``get_document_metadata`` (скорректированный план,
 шаг 4.4 рефакторинга v5.0):
@@ -78,9 +83,21 @@ cached_size, cached_mtime). Причина: в ветке fallback метода
 строкой — реализация собирала кортеж вручную как
 ``(doc_id_from_path or "", "", cached_meta[0], cached_meta[1])``,
 что скрывало реальный баг и нарушало инвариант 4-элементного
-кортежа. Расширение сигнатуры метода ``get_document_metadata``
-позволяет получить все четыре поля одним SELECT-запросом, без
-дополнительного обращения к БД через ``get_document_by_path``.
+кортежа. Расширение сигнатуры позволяет получить все четыре поля
+одним SELECT-запросом, без дополнительного обращения к БД через
+``get_document_by_path``.
+
+Возвращаемая сигнатура сохранена в Фазе 8 (ADR-008):
+
+Метод ``get_document_metadata`` по-прежнему возвращает 4-элементный
+кортеж ``tuple[str, str, int, str] | None``, несмотря на то что
+``IDocumentRepository.get_metadata`` возвращает доменную модель
+:class:`~dds_core.domain.models.DocumentMetadata`. Причина:
+сигнатура зафиксирована в Protocol ``ITextIndexer`` и
+используется в ``ScanPipeline._hash_single_file``. Замена на
+``DocumentMetadata`` потребовала бы синхронного обновления
+Protocol и всех потребителей — отложено на будущую фазу для
+минимизации blast radius текущего рефакторинга.
 
 Классы:
     ``TextIndexer`` — индексатор текстового слоя.
@@ -91,7 +108,7 @@ from __future__ import annotations
 from ..domain import config
 from ..domain.index_plan import DocumentIndexPlan
 from ..domain.index_writer import IIndexWriter
-from ..domain.interfaces import IDatabase, ITextExtractor
+from ..domain.interfaces import IDocumentRepository, ITextExtractor
 from .index_plan_builder import build_index_plan
 
 # ----------------------------------------------------------------------
@@ -104,15 +121,16 @@ class TextIndexer:
 
     Оркестрирует извлечение текста из PDF-документов и запись
     результатов в базу данных. Использует абстракции
-    ``ITextExtractor`` и ``IIndexWriter`` (а также ``IDatabase``
-    для read-операций), не зная о конкретных реализациях.
+    ``ITextExtractor``, ``IIndexWriter`` и ``IDocumentRepository``,
+    не зная о конкретных реализациях.
 
-    Разделение записи и чтения (Фаза 5):
+    Разделение записи и чтения (Фаза 5 → Фаза 8):
 
     Запись планов индексации делегируется ``IIndexWriter``
-    (например, ``SqliteIndexWriter``). Чтение метаданных (поиск
-    документа по хешу, пути, чтение кэшированных метаданных)
-    выполняется через ``IDatabase``.
+    (например, ``SqliteIndexWriter``). Read-side доступ к
+    документам делегируется ``IDocumentRepository``
+    (например, ``SqliteDocumentRepository``). Оба интерфейса
+    передаются через конструктор (dependency injection).
 
     Инкапсуляция работы с документом:
 
@@ -141,27 +159,29 @@ class TextIndexer:
 
     Методы индексатора могут вызываться из нескольких потоков
     одновременно при параллельном сканировании. Потокобезопасность
-    обеспечивается ``SQLiteAdapter`` через ``threading.Lock``.
-    Индексатор не содержит изменяемого состояния.
+    обеспечивается ``SQLiteAdapter`` через ``threading.Lock`` для
+    записи и ``ConnectionPool`` для чтения. Индексатор не
+    содержит изменяемого состояния.
 
     Attributes:
 
-    +---------------------+------------------------------------------+
-    | Атрибут             | Описание                                 |
-    +=====================+==========================================+
-    | ``_text_extractor`` | Абстракция извлечения текста.            |
-    +---------------------+------------------------------------------+
-    | ``_index_writer``   | Абстракция записи планов индексации.     |
-    +---------------------+------------------------------------------+
-    | ``_db``             | Абстракция базы данных (read-операции).  |
-    +---------------------+------------------------------------------+
+    +-----------------------------+--------------------------------------+
+    | Атрибут                     | Описание                             |
+    +=============================+======================================+
+    | ``_text_extractor``         | Абстракция извлечения текста.        |
+    +-----------------------------+--------------------------------------+
+    | ``_index_writer``           | Абстракция записи планов индексации. |
+    +-----------------------------+--------------------------------------+
+    | ``_document_repository``    | Абстракция read-side доступа         |
+    |                             | к документам.                        |
+    +-----------------------------+--------------------------------------+
     """
 
     def __init__(
         self,
         text_extractor: ITextExtractor,
         index_writer: IIndexWriter,
-        db: IDatabase,
+        document_repository: IDocumentRepository,
     ) -> None:
         """Инициализирует индексатор.
 
@@ -174,14 +194,19 @@ class TextIndexer:
         +---+-----------------------------------------------------+
         | 2 | Сохранение ссылки на ``IIndexWriter``.              |
         +---+-----------------------------------------------------+
-        | 3 | Сохранение ссылки на ``IDatabase`` (для чтений).    |
+        | 3 | Сохранение ссылки на ``IDocumentRepository``.       |
         +---+-----------------------------------------------------+
 
         Примечание:
-            Конкретные реализации ``ITextExtractor``, ``IIndexWriter``
-            и ``IDatabase`` передаются через конструктор (dependency
-            injection). Индексатор не создаёт реализации
-            самостоятельно.
+            Конкретные реализации ``ITextExtractor``,
+            ``IIndexWriter`` и ``IDocumentRepository`` передаются
+            через конструктор (dependency injection). Индексатор
+            не создаёт реализации самостоятельно.
+
+        Примечание:
+            До Фазы 8 третий параметр имел тип ``IDatabase``.
+            Замена на ``IDocumentRepository`` устраняет SQL-строки
+            из application-слоя (ADR-008).
 
         Args:
             text_extractor: Реализация ``ITextExtractor`` для
@@ -190,12 +215,13 @@ class TextIndexer:
                 ``ITextDocument``.
             index_writer: Реализация ``IIndexWriter`` для записи
                 планов индексации и удаления документов.
-            db: Реализация ``IDatabase`` для чтения метаданных
-                документов (поиск по хешу, пути, cached-метаданные).
+            document_repository: Реализация ``IDocumentRepository``
+                для read-side доступа к документам (поиск по
+                хешу/пути, чтение метаданных).
         """
         self._text_extractor = text_extractor
         self._index_writer = index_writer
-        self._db = db
+        self._document_repository = document_repository
 
     def prepare_index_plan(
         self,
@@ -336,12 +362,10 @@ class TextIndexer:
         +---+-----------------------------------------------------+
         | № | Описание                                            |
         +===+=====================================================+
-        | 1 | ``SELECT doc_id FROM documents                      |
-        |   | WHERE file_hash = ?``                               |
+        | 1 | Делегирование в                                     |
+        |   | ``self._document_repository.get_by_hash(file_hash)``.|
         +---+-----------------------------------------------------+
-        | 2 | Если результат найден → возврат ``doc_id``.         |
-        +---+-----------------------------------------------------+
-        | 3 | Иначе → возврат ``None``.                           |
+        | 2 | Возврат результата (``doc_id`` или ``None``).       |
         +---+-----------------------------------------------------+
 
         Примечание:
@@ -360,13 +384,7 @@ class TextIndexer:
             ``doc_id`` документа с данным хешем, или ``None``,
             если документ не найден.
         """
-        results = self._db.execute(
-            "SELECT doc_id FROM documents WHERE file_hash = ?",
-            (file_hash,),
-        )
-        if results:
-            return str(results[0][0])
-        return None
+        return self._document_repository.get_by_hash(file_hash)
 
     def get_document_by_path(self, file_path: str) -> str | None:
         """Ищет документ по относительному пути файла.
@@ -379,12 +397,10 @@ class TextIndexer:
         +---+-----------------------------------------------------+
         | № | Описание                                            |
         +===+=====================================================+
-        | 1 | ``SELECT doc_id FROM documents                      |
-        |   | WHERE file_path = ?``                               |
+        | 1 | Делегирование в                                     |
+        |   | ``self._document_repository.get_by_path(file_path)``.|
         +---+-----------------------------------------------------+
-        | 2 | Если результат найден → возврат ``doc_id``.         |
-        +---+-----------------------------------------------------+
-        | 3 | Иначе → возврат ``None``.                           |
+        | 2 | Возврат результата (``doc_id`` или ``None``).       |
         +---+-----------------------------------------------------+
 
         Примечание:
@@ -403,42 +419,33 @@ class TextIndexer:
             ``doc_id`` документа с данным путём, или ``None``,
             если документ не найден.
         """
-        results = self._db.execute(
-            "SELECT doc_id FROM documents WHERE file_path = ?",
-            (file_path,),
-        )
-        if results:
-            return str(results[0][0])
-        return None
+        return self._document_repository.get_by_path(file_path)
 
     def get_document_metadata(self, file_path: str) -> tuple[str, str, int, str] | None:
         """Возвращает сохранённые метаданные документа для ленивого
         хеширования.
 
-        Возвращает значения полей ``doc_id``, ``file_hash``,
-        ``cached_size`` и ``cached_mtime`` для документа с указанным
-        относительным путём. Эти значения используются в ветке
-        fallback метода ``ScanPipeline._hash_single_file`` (когда
-        ``DocumentCache`` недоступен). Ранее возвращался 2-элементный
-        кортеж ``(cached_size, cached_mtime)``, а ``doc_id`` и
-        ``file_hash`` собирались отдельными SELECT-запросами; это
-        скрывало баг (``file_hash`` всегда был пустой строкой) и
-        увеличивало число обращений к БД. Расширение сигнатуры
-        устраняет обе проблемы.
+        Делегирует чтение в
+        ``self._document_repository.get_metadata(file_path)``,
+        который возвращает :class:`~dds_core.domain.models.DocumentMetadata`.
+        Метод преобразует результат в 4-элементный кортеж
+        ``(doc_id, file_hash, cached_size, cached_mtime)`` —
+        сигнатура зафиксирована в Protocol ``ITextIndexer`` и
+        используется в ``ScanPipeline._hash_single_file``.
 
         Операции:
 
         +---+-----------------------------------------------------+
         | № | Описание                                            |
         +===+=====================================================+
-        | 1 | ``SELECT doc_id, file_hash, cached_size,             |
-        |   | cached_mtime FROM documents WHERE file_path = ?``.   |
+        | 1 | ``metadata = self._document_repository.get_metadata( |
+        |   | file_path)``.                                       |
         +---+-----------------------------------------------------+
-        | 2 | Если результат найден → возврат 4-элементного        |
-        |   | кортежа ``(doc_id, file_hash, cached_size,           |
-        |   | cached_mtime)``.                                     |
+        | 2 | Если ``metadata is None`` → возврат ``None``.       |
         +---+-----------------------------------------------------+
-        | 3 | Иначе → возврат ``None``.                           |
+        | 3 | Возврат кортежа ``(metadata.doc_id,                  |
+        |   | metadata.file_hash, metadata.cached_size,           |
+        |   | metadata.cached_mtime)``.                           |
         +---+-----------------------------------------------------+
 
         Примечание:
@@ -454,9 +461,7 @@ class TextIndexer:
 
         Используется конвейером параллельного сканирования
         (``ScanPipeline._hash_single_file``) при отсутствии
-        ``DocumentCache``, а также оркестратором сканирования
-        (``ScanOrchestrator``) в методах ``_process_single_file()``
-        и ``get_index_status()``.
+        ``DocumentCache``.
 
         Потокобезопасность:
             Метод может вызываться из нескольких потоков одновременно.
@@ -473,23 +478,19 @@ class TextIndexer:
             последнего изменения в формате ISO 8601 (строка).
 
         Note:
-            Breaking change относительно предыдущих версий:
-            сигнатура изменилась с ``tuple[int, str] | None`` на
-            ``tuple[str, str, int, str] | None``. Соответствующий
-            контракт обновлён в ``dds_core/domain/interfaces.py``,
-            потребитель — в ``dds_core/application/scan_pipeline.py``.
+            Breaking change относительно Фазы 5: параметр
+            ``db: IDatabase`` конструктора заменён на
+            ``document_repository: IDocumentRepository``.
+            Сигнатура самого метода не изменилась. Соответствующая
+            запись добавлена в ``docs/DEPRECATIONS.yaml``.
+            См. ADR-008.
         """
-        results = self._db.execute(
-            "SELECT doc_id, file_hash, cached_size, cached_mtime "
-            "FROM documents WHERE file_path = ?",
-            (file_path,),
+        metadata = self._document_repository.get_metadata(file_path)
+        if metadata is None:
+            return None
+        return (
+            metadata.doc_id,
+            metadata.file_hash,
+            metadata.cached_size,
+            metadata.cached_mtime,
         )
-        if results:
-            row = results[0]
-            return (
-                str(row[0]),
-                str(row[1]),
-                int(row[2]),
-                str(row[3]),
-            )
-        return None

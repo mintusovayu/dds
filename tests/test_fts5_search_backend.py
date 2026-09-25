@@ -505,3 +505,54 @@ def test_search_terms_match_snippet_content(
     # Каждый термин присутствует в сниппете.
     for term in page.terms:
         assert term in page.snippet
+
+
+# ----------------------------------------------------------------------
+# Раздел: Экранирование FTS5-спецсимволов (Фаза 8, ADR-008)
+# ----------------------------------------------------------------------
+#
+# До Фазы 8 функция normalize_search_query выдавала "normalized_text:
+# ec-423-1", что FTS5 парсил как ec - 423 - 1 и падал с
+# sqlite3.OperationalError: no such column: 423. После экранирования
+# (Фаза 8) токен оборачивается в двойные кавычки.
+
+
+def test_search_hyphenated_code_does_not_raise(
+    adapter: SQLiteAdapter,
+    backend: FTS5SearchBackend,
+) -> None:
+    """Запрос с дефисом (``EC-423-1``) не поднимает ``ValueError``.
+
+    Регресс-защита Фазы 8: до экранирования токен
+    ``EC-423-1`` нормализовался в ``ec-423-1``, FTS5 парсил его
+    как ``ec - 423 - 1`` и падал с ``OperationalError``, который
+    ``FTS5SearchBackend.search`` оборачивал в ``ValueError``.
+    После экранирования токен оборачивается в двойные кавычки и
+    парсится как единый phrase-термин.
+
+    Может вернуть как совпадения, так и пустой список — главное,
+    что не ``ValueError``.
+    """
+    _insert_document(adapter, "doc-hyphen", "hyphen.pdf", page_count=1)
+    _insert_page(adapter, "doc-hyphen", 0, "EC-423-1 code here")
+
+    result = backend.search("EC-423-1")
+    assert isinstance(result, list)
+
+
+def test_search_prefix_query_still_works(
+    adapter: SQLiteAdapter,
+    backend: FTS5SearchBackend,
+) -> None:
+    """Префиксный поиск (``cor*``) по-прежнему работает.
+
+    Регресс-защита Фазы 8: убедиться, что добавление
+    экранирования спецсимволов не сломало prefix-семантику FTS5
+    для обычных слов без спецсимволов.
+    """
+    _insert_document(adapter, "doc-prefix", "prefix.pdf", page_count=1)
+    _insert_page(adapter, "doc-prefix", 0, "corpus is here")
+
+    results = backend.search("cor*")
+    assert len(results) == 1
+    assert results[0].doc_id == "doc-prefix"

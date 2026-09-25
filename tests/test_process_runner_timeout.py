@@ -92,13 +92,13 @@ from __future__ import annotations
 
 import asyncio
 import signal
-import threading
 import time
 from collections.abc import Callable, Coroutine
 from typing import Any, TypeVar
 
 import pytest
 from dds_core.infrastructure.process_task_runner import ProcessTaskRunner
+from tests._async_helpers import _run
 
 # =====================================================================
 # Константы
@@ -176,42 +176,6 @@ def _ignore_sigterm_and_sleep() -> None:
 # =====================================================================
 # Helpers
 # =====================================================================
-
-
-def _run(coro: Coroutine[Any, Any, _T]) -> _T:
-    """Запускает корутину в отдельном потоке с собственным event loop.
-
-    См. подробное обоснование в
-    ``tests/test_process_task_runner.py::_run``. Кратко: running loop
-    от ``pytest-asyncio`` утекает в главный поток при полном прогоне
-    набора; отдельный поток не имеет running loop по определению,
-    поэтому ``asyncio.run`` внутри него всегда работает.
-
-    Args:
-        coro: Корутина для выполнения.
-
-    Returns:
-        Результат корутины.
-
-    Raises:
-        BaseException: Любое исключение, поднятое корутиной.
-    """
-    results: list[_T] = []
-    errors: list[BaseException] = []
-
-    def _target() -> None:
-        try:
-            results.append(asyncio.run(coro))
-        except BaseException as e:  # noqa: BLE001 — проброс через границу потока
-            errors.append(e)
-
-    thread = threading.Thread(target=_target)
-    thread.start()
-    thread.join()
-
-    if errors:
-        raise errors[0]
-    return results[0]
 
 
 async def _with_runner(

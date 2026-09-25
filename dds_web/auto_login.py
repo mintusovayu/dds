@@ -71,7 +71,7 @@ try:
 except ImportError:
     raise ImportError(
         "Для работы автологина DDS необходимо установить fastapi: pip install fastapi"
-    )
+    ) from None
 
 from dds_core.domain.events import AutoLoginPerformed
 

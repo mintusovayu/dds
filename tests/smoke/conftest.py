@@ -589,9 +589,7 @@ def _is_test_failed(request: pytest.FixtureRequest) -> bool:
     rep_call = getattr(request.node, "rep_call", None)
     if rep_setup is not None and rep_setup.failed:
         return True
-    if rep_call is not None and rep_call.failed:
-        return True
-    return False
+    return bool(rep_call is not None and rep_call.failed)
 
 
 # =====================================================================
@@ -600,7 +598,7 @@ def _is_test_failed(request: pytest.FixtureRequest) -> bool:
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
-def pytest_runtest_makereport(item, call):  # noqa: ANN001
+def pytest_runtest_makereport(item, call):
     """Сохраняет результат фазы в ``item.rep_<when>``.
 
     Стандартный приём: даёт fixtures доступ к результату теста
@@ -745,7 +743,7 @@ def dds_app_server(
     ]
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
 
-    proc = subprocess.Popen(  # noqa: S603 — команда формируется в этом модуле
+    proc = subprocess.Popen(
         cmd,
         cwd=str(_REPO_ROOT),
         stdout=log_fh,
@@ -846,7 +844,7 @@ def context(
             artifacts = _artifacts_path_for(request.node.nodeid)
             try:
                 ctx.tracing.stop(path=str(artifacts / "trace.zip"))
-            except Exception:  # noqa: BLE001 — сохранение артефакта не должно маскировать падение
+            except Exception:
                 # Если trace не сохранился, оригинальное падение
                 # остаётся приоритетным; ошибка трассировки подавляется.
                 ctx.tracing.stop()
@@ -881,7 +879,7 @@ def page(context: BrowserContext, request: pytest.FixtureRequest) -> Iterator[Pa
                     path=str(artifacts / "screenshot.png"),
                     full_page=True,
                 )
-            except Exception:  # noqa: BLE001 — сохранение артефакта не должно маскировать падение
+            except Exception:
                 pass
         p.close()
 

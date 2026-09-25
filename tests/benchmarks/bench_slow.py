@@ -177,6 +177,9 @@ from dds_core.infrastructure.file_scanner import DirectoryScanner
 from dds_core.infrastructure.process_task_runner import ProcessTaskRunner
 from dds_core.infrastructure.pymupdf_text_extractor import PyMuPDFTextExtractor
 from dds_core.infrastructure.sqlite_adapter import SQLiteAdapter
+from dds_core.infrastructure.sqlite_document_repository import (
+    SqliteDocumentRepository,
+)
 from dds_core.infrastructure.sqlite_index_writer import SqliteIndexWriter
 from dds_core.subprocess_tasks.pdf_workers import build_index_plan_in_subprocess
 
@@ -589,8 +592,15 @@ def test_scan_full_1000_pdfs(
         """Один прогон сканирования на свежей БД.
 
         Создаёт новый ``SQLiteAdapter``, ``SqliteIndexWriter``,
-        ``TextIndexer`` и ``ScanPipeline`` для текущего прогона.
-        Каждый прогон изолирован: своя БД, свой ``doc_id``-namespace.
+        ``SqliteDocumentRepository``, ``TextIndexer`` и
+        ``ScanPipeline`` для текущего прогона. Каждый прогон
+        изолирован: своя БД, свой ``doc_id``-namespace.
+
+        Read-side доступ к документам делегируется
+        ``SqliteDocumentRepository`` (Фаза 8, ADR-008): SQL-строки
+        для чтения метаданных выведены из application-слоя.
+        Репозиторий создаётся заново на каждый прогон — БД
+        свежая, и репозиторий привязан к её адаптеру.
 
         Returns:
             Итоговый ``ScanStatus`` сканирования.
@@ -602,10 +612,11 @@ def test_scan_full_1000_pdfs(
         try:
             DatabaseManager(adapter).ensure_all()
             index_writer = SqliteIndexWriter(adapter)
+            document_repository = SqliteDocumentRepository(adapter)
             indexer = TextIndexer(
                 text_extractor=mupdf_extractor,
                 index_writer=index_writer,
-                db=adapter,
+                document_repository=document_repository,
             )
             pipeline = ScanPipeline(
                 db=adapter,

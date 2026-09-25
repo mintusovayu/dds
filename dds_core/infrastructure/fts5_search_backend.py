@@ -378,7 +378,7 @@ class FTS5SearchBackend:
             return []
 
         doc_ids = [doc_id for doc_id, _ in paginated]
-        doc_ranks = {doc_id: rank for doc_id, rank in paginated}
+        doc_ranks = dict(paginated)
 
         # ── Query 2: страницы выбранных документов с сниппетами ──
         # Порядок параметров:
