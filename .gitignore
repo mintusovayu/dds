@@ -72,3 +72,8 @@ Thumbs.db
 
 #pdf
 *.pdf
+
+# LibreOffice lock-файлы (.~lock.<filename>#) — временные файлы,
+# создаваемые при редактировании документов в LibreOffice Calc.
+# Не должны попадать в репозиторий.
+.~lock.*#
